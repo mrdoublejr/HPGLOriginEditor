@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HPGL Origin Corrector</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<header>
+  <h1>HPGL Origin Corrector</h1>
+  <p>Fix HPGL coordinates for your plotter's origin and paper size</p>
+</header>
+
+<div class="container" id="appContainer" style="display:none;">
+
+  <!-- LEFT: Input file + original preview -->
+  <div class="panel">
+    <h2>Input File</h2>
+
+    <div class="drop-zone" id="dropZone">
+      <input type="file" id="fileInput" accept=".hpgl,.plt,.hpg,.txt">
+      <label for="fileInput">
+        Drop an <strong>HPGL file</strong> here<br>
+        or click to browse
+      </label>
+    </div>
+
+    <div class="file-info" id="fileInfo" style="display:none;">
+      <span class="label">File:</span> <span id="fileName"></span><br>
+      <span class="label">Size:</span> <span id="fileSize"></span><br>
+      <span class="label">Bounding box:</span> <span id="bbox"></span>
+    </div>
+
+    <h2 style="margin-top:20px;">Original Preview</h2>
+    <div class="preview-box" id="previewOriginal">
+      No file loaded
+    </div>
+  </div>
+
+  <!-- RIGHT: Plotter settings + corrected preview + controls -->
+  <div class="panel">
+    <h2>Target Plotter</h2>
+
+    <select class="plotter-select" id="plotterSelect"></select>
+    <select class="plotter-select" id="hpglVersion"></select>
+    <select class="plotter-select" id="mediaSelect"></select>
+
+    <div class="plotter-info" id="plotterInfo"></div>
+
+    <h2 style="margin-top:16px;">Corrected Preview</h2>
+    <div class="preview-box" id="previewCorrected">
+      No corrected file yet
+    </div>
+
+    <div class="control-row">
+      <span class="control-label">Rotate</span>
+      <button class="icon-btn" id="btnRotateMinus" title="Rotate −45°">
+        <span class="icon">↺</span> 45°
+      </button>
+      <span class="rotate-angle" id="rotateAngle">0°</span>
+      <button class="icon-btn" id="btnRotatePlus" title="Rotate +45°">
+        45° <span class="icon">↻</span>
+      </button>
+      <button class="icon-btn subtle" id="btnRotateReset" title="Reset rotation">
+        reset
+      </button>
+    </div>
+
+    <div class="control-row">
+      <span class="control-label">Size</span>
+      <button class="icon-btn" id="btnZoomOut" title="Shrink">−</button>
+      <input type="range" id="zoomSlider" min="10" max="1000" step="1" value="100">
+      <button class="icon-btn" id="btnZoomIn" title="Enlarge">+</button>
+      <span class="zoom-pct" id="zoomPercent">100%</span>
+      <button class="icon-btn subtle" id="btnZoomReset" title="Reset size">reset</button>
+    </div>
+
+    <div class="control-row">
+      <span class="control-label">Offset</span>
+      <span class="offset-val" id="offsetDisplay">X 0, Y 0 PU</span>
+      <button class="icon-btn subtle" id="btnResetOffset" title="Reset offset">reset</button>
+      <span class="hint">Drag the drawing to reposition · scroll over canvas to zoom</span>
+    </div>
+
+    <div class="btn-row">
+      <button class="btn-primary" id="btnDownload" disabled>Download HPGL</button>
+      <span class="status" id="status"></span>
+    </div>
+
+  </div>
+
+</div>
+
+<div id="loadingMessage" class="loading">Loading plotter configurations…</div>
+
+<script src="js/config.js"></script>
+<script src="js/core.js"></script>
+<script src="js/preview.js"></script>
+<script src="js/correction.js"></script>
+<script src="js/main.js"></script>
+
+</body>
+</html>

@@ -1,0 +1,83 @@
+{
+  "hp7585b": {
+    "name": "HP 7585B",
+    "unitsPerMM": 40,
+    "pens": 8,
+    "defaultMode": "hpgl",
+    "margins": { "side": 15, "lead": 15, "trail": 15 },
+    "modes": {
+      "hpgl": {
+        "label": "HP-GL (center origin, negatives OK)",
+        "origin": "center",
+        "allowNegative": true
+      }
+    },
+    "media": {
+      "A4 (8.3 × 11.7 in)":  { "across": 8.27,  "along": 11.69 },
+      "A3 (11.7 × 16.5 in)": { "across": 11.69, "along": 16.54 },
+      "A2 (16.5 × 23.4 in)": { "across": 16.54, "along": 23.39 },
+      "A1 (23.4 × 33.1 in)": { "across": 23.39, "along": 33.11 },
+      "A (8.5 × 11 in)":     { "across": 8.5,   "along": 11 },
+      "B (11 × 17 in)":      { "across": 11,    "along": 17 },
+      "C (17 × 22 in)":      { "across": 17,    "along": 22 },
+      "D (22 × 34 in)":      { "across": 22,    "along": 34 },
+      "E (34 × 44 in)":      { "across": 34,    "along": 44 }
+    },
+    "defaultMedia": "B (11 × 17 in)"
+  },
+
+  "hp7475a": {
+    "name": "HP 7475A",
+    "unitsPerMM": 40,
+    "pens": 6,
+    "defaultMode": "hpgl",
+    "margins": { "side": 5, "lead": 5, "trail": 5 },
+    "modes": {
+      "hpgl": {
+        "label": "HP-GL (bottom-left origin, negatives OK)",
+        "origin": "bottom-left",
+        "allowNegative": true
+      }
+    },
+    "media": {
+      "A4 (8.3 × 11.7 in)":  { "across": 8.27,  "along": 11.69 },
+      "A3 (11.7 × 16.5 in)": { "across": 11.69, "along": 16.54 },
+      "A (8.5 × 11 in)":     { "across": 8.5,   "along": 11 },
+      "B (11 × 17 in)":      { "across": 11,    "along": 17 }
+    },
+    "defaultMedia": "A (8.5 × 11 in)"
+  },
+
+  "designjet750": {
+    "name": "HP DesignJet 750C",
+    "unitsPerMM": 40,
+    "pens": 1,
+    "defaultMode": "hpgl",
+    "margins": { "side": 5, "lead": 17, "trail": 17 },
+    "modes": {
+      "hpgl": {
+        "label": "HP-GL (center origin, negatives OK)",
+        "origin": "center",
+        "allowNegative": true
+      },
+      "hpgl2": {
+        "label": "HP-GL/2 (top-left origin, no negatives)",
+        "origin": "top-left",
+        "allowNegative": false
+      }
+    },
+    "media": {
+      "A4 (8.3 × 11.7 in)":  { "across": 8.27,  "along": 11.69 },
+      "A3 (11.7 × 16.5 in)": { "across": 11.69, "along": 16.54 },
+      "A2 (16.5 × 23.4 in)": { "across": 16.54, "along": 23.39 },
+      "A1 (23.4 × 33.1 in)": { "across": 23.39, "along": 33.11 },
+      "A0 (33.1 × 46.8 in)": { "across": 33.11, "along": 46.81 },
+      "A (8.5 × 11 in)":     { "across": 8.5,   "along": 11 },
+      "B (11 × 17 in)":      { "across": 11,    "along": 17 },
+      "C (17 × 22 in)":      { "across": 17,    "along": 22 },
+      "D (22 × 34 in)":      { "across": 22,    "along": 34 },
+      "E (34 × 44 in)":      { "across": 34,    "along": 44 }
+    },
+    "defaultMedia": "D (22 × 34 in)"
+  }
+}

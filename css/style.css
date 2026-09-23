@@ -1,0 +1,221 @@
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: system-ui, -apple-system, sans-serif;
+  background: #f4f4f6;
+  color: #222;
+  padding: 20px;
+}
+
+header { text-align: center; margin-bottom: 20px; }
+header h1 { font-size: 1.5rem; font-weight: 600; }
+header p { color: #666; font-size: 0.9rem; margin-top: 4px; }
+
+.container {
+  max-width: 1300px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: 1fr 2fr;
+  gap: 20px;
+}
+
+.panel {
+  background: #fff;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+}
+.panel h2 {
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #888;
+  margin-bottom: 12px;
+}
+
+.drop-zone {
+  border: 2px dashed #bbb;
+  border-radius: 6px;
+  padding: 32px 20px;
+  text-align: center;
+  color: #888;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.drop-zone:hover, .drop-zone.dragover {
+  border-color: #4a90d9;
+  background: #f0f6fd;
+}
+.drop-zone input { display: none; }
+.drop-zone label { cursor: pointer; display: block; }
+.drop-zone strong { color: #4a90d9; }
+
+.file-info {
+  margin-top: 12px;
+  font-size: 0.85rem;
+  color: #555;
+}
+.file-info .label { color: #999; }
+
+.preview-box {
+  background: #fafafa;
+  border: 1px solid #e5e5e5;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #bbb;
+  font-size: 0.85rem;
+  overflow: hidden;
+  min-height: 200px;
+  flex: 1;
+}
+.preview-box canvas {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+.preview-box.draggable canvas { cursor: grab; }
+.preview-box.dragging canvas   { cursor: grabbing; }
+
+.plotter-select {
+  width: 100%;
+  padding: 10px 12px;
+  font-size: 0.95rem;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  background: #fff;
+  margin-bottom: 10px;
+}
+.plotter-select:disabled {
+  background: #f0f0f4;
+  color: #999;
+  cursor: not-allowed;
+}
+
+.plotter-info {
+  font-size: 0.8rem;
+  color: #777;
+  text-align: center;
+  margin-bottom: 12px;
+}
+
+.control-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 8px 12px;
+  background: #f7f7fa;
+  border: 1px solid #e5e5e5;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  color: #555;
+  flex-wrap: wrap;
+}
+.control-label {
+  font-weight: 500;
+  color: #666;
+  min-width: 52px;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.rotate-angle,
+.zoom-pct {
+  font-family: ui-monospace, monospace;
+  font-size: 0.8rem;
+  color: #333;
+  min-width: 48px;
+  text-align: center;
+}
+.offset-val {
+  font-family: ui-monospace, monospace;
+  font-size: 0.8rem;
+  color: #333;
+}
+.control-row .hint {
+  margin-left: auto;
+  color: #999;
+  font-size: 0.75rem;
+}
+
+.icon-btn {
+  padding: 6px 12px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  background: #e8e8ec;
+  color: #333;
+  border: 1px solid #d0d0d6;
+  border-radius: 6px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: background 0.1s, border-color 0.1s, transform 0.05s;
+}
+.icon-btn:hover { background: #dcdce2; border-color: #b8b8c0; }
+.icon-btn:active { background: #c8c8cc; transform: translateY(1px); }
+.icon-btn .icon { font-size: 1rem; line-height: 1; }
+.icon-btn.subtle {
+  background: transparent;
+  border-color: transparent;
+  color: #888;
+  font-size: 0.75rem;
+  padding: 4px 8px;
+}
+.icon-btn.subtle:hover {
+  background: #e8e8ec;
+  border-color: #d0d0d6;
+  color: #333;
+}
+
+.btn-row {
+  margin-top: 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+button.btn-primary {
+  padding: 12px 24px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  background: #4a90d9;
+  color: #fff;
+  border: 1px solid #3a7bc8;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+button.btn-primary:hover { background: #3a7bc8; }
+button.btn-primary:disabled {
+  background: #b0c8e0;
+  border-color: #b0c8e0;
+  cursor: not-allowed;
+}
+
+input[type="range"] {
+  width: 140px;
+  cursor: pointer;
+  accent-color: #4a90d9;
+}
+
+.status {
+  font-size: 0.85rem;
+  color: #666;
+  min-height: 1.2em;
+}
+.status.warn { color: #b8801a; }
+
+.loading {
+  text-align: center;
+  padding: 40px 20px;
+  color: #888;
+  font-size: 0.9rem;
+}
+
+@media (max-width: 900px) {
+  .container { grid-template-columns: 1fr; }
+}
