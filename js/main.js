@@ -271,11 +271,12 @@ function resetManualOffset() {
 
 function updateOffsetDisplay() {
   if (manualOffsetX === 0 && manualOffsetY === 0) {
-    offsetDisplay.textContent = "X 0, Y 0 PU";
+    offsetDisplay.textContent = "X 0, Y 0 plotter units";
   } else {
     const sx = manualOffsetX >= 0 ? "+" : "";
     const sy = manualOffsetY >= 0 ? "+" : "";
-    offsetDisplay.textContent = `X ${sx}${manualOffsetX}, Y ${sy}${manualOffsetY} PU`;
+    offsetDisplay.textContent =
+      `X ${sx}${manualOffsetX}, Y ${sy}${manualOffsetY} plotter units`;
   }
 }
 

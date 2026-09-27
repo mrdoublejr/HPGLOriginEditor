@@ -13,7 +13,7 @@ function renderPreview(text, plotterKey, modeKey, mediaKey, targetBox,
   const pageW = media.across * IN_TO_PU;
   const pageH = media.along  * IN_TO_PU;
 
-  const targetArea = 500 * 500;
+  const targetArea = 333 * 333;  // ~1/3 of a 1000px × 1000px square
   const aspect = pageW / pageH;
   const canvasW = Math.round(Math.sqrt(targetArea * aspect));
   const canvasH = Math.round(Math.sqrt(targetArea / aspect));

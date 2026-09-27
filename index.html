@@ -15,10 +15,10 @@
 
 <div class="container" id="appContainer" style="display:none;">
 
-  <!-- LEFT: Input file + original preview -->
+  <!-- LEFT COLUMN: input file, plotter settings, original preview -->
   <div class="panel">
-    <h2>Input File</h2>
 
+    <h2>Input File</h2>
     <div class="drop-zone" id="dropZone">
       <input type="file" id="fileInput" accept=".hpgl,.plt,.hpg,.txt">
       <label for="fileInput">
@@ -33,23 +33,23 @@
       <span class="label">Bounding box:</span> <span id="bbox"></span>
     </div>
 
-    <h2 style="margin-top:20px;">Original Preview</h2>
-    <div class="preview-box" id="previewOriginal">
-      No file loaded
-    </div>
-  </div>
-
-  <!-- RIGHT: Plotter settings + corrected preview + controls -->
-  <div class="panel">
-    <h2>Target Plotter</h2>
-
+    <h2 style="margin-top:16px;">Target Plotter</h2>
     <select class="plotter-select" id="plotterSelect"></select>
     <select class="plotter-select" id="hpglVersion"></select>
     <select class="plotter-select" id="mediaSelect"></select>
-
     <div class="plotter-info" id="plotterInfo"></div>
 
-    <h2 style="margin-top:16px;">Corrected Preview</h2>
+    <h2 style="margin-top:16px;">Original Preview</h2>
+    <div class="preview-box" id="previewOriginal">
+      No file loaded
+    </div>
+
+  </div>
+
+  <!-- RIGHT COLUMN: corrected preview + controls -->
+  <div class="panel">
+
+    <h2>Corrected Preview</h2>
     <div class="preview-box" id="previewCorrected">
       No corrected file yet
     </div>
@@ -79,9 +79,9 @@
 
     <div class="control-row">
       <span class="control-label">Offset</span>
-      <span class="offset-val" id="offsetDisplay">X 0, Y 0 PU</span>
+      <span class="offset-val" id="offsetDisplay">X 0, Y 0 plotter units</span>
       <button class="icon-btn subtle" id="btnResetOffset" title="Reset offset">reset</button>
-      <span class="hint">Drag the drawing to reposition · scroll over canvas to zoom</span>
+      <span class="hint">Drag the drawing · scroll to zoom</span>
     </div>
 
     <div class="btn-row">
