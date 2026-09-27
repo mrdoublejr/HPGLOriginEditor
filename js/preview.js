@@ -31,15 +31,7 @@ function renderPreview(text, plotterKey, modeKey, mediaKey, targetBox,
   canvas.style.borderRadius = "6px";
   targetBox.appendChild(canvas);
 
-  // Wheel handler attached to the canvas only.
-  // Cursor over the canvas → zoom; anywhere else → normal page scroll.
-  if (enableDrag) {
-    canvas.addEventListener("wheel", (e) => {
-      e.preventDefault();
-      const delta = e.deltaY < 0 ? ZOOM_STEP_BTN : -ZOOM_STEP_BTN;
-      setZoom(zoomLevel + delta);
-    }, { passive: false });
-  }
+
 
   const ctx = canvas.getContext("2d");
 

@@ -6,7 +6,7 @@ const IN_TO_PU = 25.4 * 40;         // 1016 PU per inch
 const PU_PER_MM = IN_TO_PU / 25.4;  // 40 PU per mm
 const ZOOM_MIN = 0.10;
 const ZOOM_MAX = 10.00;
-const ZOOM_STEP_BTN = 0.01;
+const ZOOM_STEP_BTN = 0.05;
 const ROTATE_STEP_DEG = 45;
 
 // ── State ────────────────────────────────────────────────────────

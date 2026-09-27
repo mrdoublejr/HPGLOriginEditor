@@ -98,6 +98,43 @@ function wireEvents() {
   btnZoomOut.addEventListener("click", () => setZoom(zoomLevel - ZOOM_STEP_BTN));
   btnZoomReset.addEventListener("click", () => setZoom(1.0));
 
+  // Wheel-to-zoom. Scoped to the whole previewCorrected box, not just the
+  // <canvas> element itself — the canvas doesn't fill 100% of the box
+  // (there's padding and the info-line text below it), so during a real
+  // scroll gesture the cursor drifts on and off the canvas by a pixel or
+  // two, which made preventDefault() get skipped for some events mid-
+  // gesture and the browser fall through to a normal page scroll for
+  // those. Checking against the whole box instead of the canvas element
+  // means you have to move off the box entirely to get normal scrolling
+  // back.
+  //
+  // The actual redraw is deferred to the next animation frame rather than
+  // done inline on every wheel tick, since a full canvas redraw on every
+  // single event is expensive and can itself make some browsers (Firefox
+  // especially) decide the page isn't responding fast enough and hand the
+  // rest of a gesture off to native async scrolling.
+  let zoomRenderScheduled = false;
+  previewCorrected.addEventListener("wheel", (e) => {
+    if (!correctedText) return;
+
+    e.preventDefault();
+
+    const delta = e.deltaY < 0 ? ZOOM_STEP_BTN : -ZOOM_STEP_BTN;
+    zoomLevel = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, zoomLevel + delta));
+    const pct = Math.round(zoomLevel * 100);
+    zoomPercentEl.textContent = pct + "%";
+    zoomSlider.value = pct;
+
+    if (!zoomRenderScheduled) {
+      zoomRenderScheduled = true;
+      requestAnimationFrame(() => {
+        zoomRenderScheduled = false;
+        renderPreview(correctedText, plotterSelect.value, hpglVersion.value,
+                      mediaSelect.value, previewCorrected, true);
+      });
+    }
+  }, { passive: false });
+
   zoomSlider.addEventListener("input", () => {
     setZoom(parseInt(zoomSlider.value, 10) / 100);
   });
