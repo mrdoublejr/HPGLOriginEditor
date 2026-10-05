@@ -2,6 +2,43 @@
 // Canvas rendering for original and corrected previews.
 // Rotation is NOT applied here — corrected coordinates already include it.
 
+// Pen colours for the preview (pen 1 stays dark like before; SP0 / unknown pens too).
+const PEN_COLORS = ["#222", "#222", "#c0392b", "#1e7a46", "#1f5fa8",
+                    "#8e44ad", "#d68910", "#7f8c8d", "#2c3e50"];
+
+// Reads HPGL into paths that remember which pen drew them: [{pen, pts:[[x,y],...]}].
+// Understands IN, SP, PU, PD, PA, PR. Used only for drawing the preview.
+function parsePenPaths(text) {
+  const out = [];
+  let pen = 1, down = false, abs = true, x = 0, y = 0, cur = null;
+  for (let c of text.split(/[;\n\r]+/)) {
+    c = c.trim();
+    if (c.length < 2) continue;
+    const op = c.slice(0, 2).toUpperCase();
+    const args = c.slice(2);
+    if (op === "IN") { pen = 1; down = false; abs = true; cur = null; continue; }
+    if (op === "SP") { pen = parseInt(args, 10) || 0; cur = null; continue; }
+    if (op === "PA" || op === "PR" || op === "PU" || op === "PD") {
+      if (op === "PA") abs = true;
+      else if (op === "PR") abs = false;
+      else { down = (op === "PD"); if (!down) cur = null; }
+      const n = args.match(/-?\d+(\.\d+)?/g) || [];
+      for (let k = 0; k + 1 < n.length; k += 2) {
+        let nx = parseFloat(n[k]), ny = parseFloat(n[k + 1]);
+        if (!abs) { nx += x; ny += y; }
+        if (down && pen > 0) {
+          if (!cur) { cur = { pen, pts: [[x, y]] }; out.push(cur); }
+          cur.pts.push([nx, ny]);
+        } else {
+          cur = null;
+        }
+        x = nx; y = ny;
+      }
+    }
+  }
+  return out;
+}
+
 function renderPreview(text, plotterKey, modeKey, mediaKey, targetBox,
                        enableDrag) {
   const p = PLOTTERS[plotterKey];
@@ -31,9 +68,15 @@ function renderPreview(text, plotterKey, modeKey, mediaKey, targetBox,
   canvas.style.borderRadius = "6px";
   targetBox.appendChild(canvas);
 
-
+  // Crisper drawing: give the canvas as many pixels as the screen actually shows.
+  // All the layout maths below stays in the original canvasW × canvasH units.
+  const shownW = canvas.getBoundingClientRect().width || canvasW;
+  const hiRes = Math.min(3, Math.max(1, (shownW * (window.devicePixelRatio || 1)) / canvasW));
+  canvas.width = Math.round(canvasW * hiRes);
+  canvas.height = Math.round(canvasH * hiRes);
 
   const ctx = canvas.getContext("2d");
+  ctx.scale(hiRes, hiRes);
 
   const origin = mode.origin;
   const isEdge = (origin !== "center");
@@ -144,21 +187,28 @@ function renderPreview(text, plotterKey, modeKey, mediaKey, targetBox,
   ctx.stroke();
   ctx.setLineDash([]);
 
-  // ── Drawing ──
-  const paths = parsePaths(text);
+  // ── Drawing (one colour per pen) ──
+  let penPaths = parsePenPaths(text);
+  if (penPaths.length === 0) {
+    // my reader found nothing: fall back to the original single-colour reader
+    penPaths = parsePaths(text).map(pts => ({ pen: 1, pts }));
+  }
 
   ctx.save();
   ctx.beginPath();
   ctx.rect(0, 0, canvasW, canvasH);
   ctx.clip();
 
-  ctx.strokeStyle = "#222";
   ctx.lineWidth = 1;
-  for (const path of paths) {
-    if (path.length < 2) continue;
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  for (const path of penPaths) {
+    const pts = path.pts;
+    if (pts.length < 2) continue;
+    ctx.strokeStyle = PEN_COLORS[path.pen] || PEN_COLORS[0];
     ctx.beginPath();
-    for (let i = 0; i < path.length; i++) {
-      const [x, y] = path[i];
+    for (let i = 0; i < pts.length; i++) {
+      const [x, y] = pts[i];
       const px = ox + x * s;
       const py = oy + ySign * y * s;
       if (i === 0) ctx.moveTo(px, py);

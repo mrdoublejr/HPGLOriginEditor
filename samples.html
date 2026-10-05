@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sample plot files · HPGL Origin Corrector</title>
+<style>
+  :root{
+    --bg:#e7edf1; --ink:#14243b; --muted:#5b6b7e; --line:#c3cfd9;
+    --paper:#ffffff; --accent:#1f5fa8;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{ --bg:#101a26; --ink:#e4ebf2; --muted:#93a3b5; --line:#2b3b4e; --accent:#6aa9ee; }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:16px/1.5 "Helvetica Neue",Arial,sans-serif}
+  header,main{max-width:1100px;margin:0 auto;padding:0 20px}
+  header{padding-top:32px}
+  h1{font-size:clamp(1.6rem,4vw,2.2rem);margin:0 0 6px;letter-spacing:-.01em}
+  header p{margin:0 0 4px;color:var(--muted);max-width:60ch}
+  header a{color:var(--accent)}
+  .bar{display:flex;gap:12px;align-items:center;margin:20px 0}
+  .bar label{color:var(--muted);font-size:.9rem}
+  select{font:inherit;padding:6px 10px;border:1px solid var(--line);border-radius:6px;
+    background:var(--paper);color:#14243b}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:20px;padding-bottom:48px}
+  .card{display:flex;flex-direction:column;background:var(--paper);color:#14243b;
+    border:1px solid var(--line);border-radius:4px;overflow:hidden}
+  .thumb{aspect-ratio:4/3;background:
+      linear-gradient(#e8eef3 1px,transparent 1px) 0 0/20px 20px,
+      linear-gradient(90deg,#e8eef3 1px,transparent 1px) 0 0/20px 20px,#fff;
+    border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:center}
+  .thumb canvas{width:100%;height:100%;display:block}
+  .thumb span{font-size:.85rem;color:#5b6b7e;padding:12px;text-align:center}
+  .meta{padding:12px 14px 14px;display:flex;flex-direction:column;gap:4px;flex:1}
+  .meta h2{font-size:1.05rem;margin:0}
+  .meta dl{margin:0;font-size:.85rem;color:#5b6b7e}
+  .meta dl div{display:flex;gap:6px}
+  .meta dt{font-weight:600}
+  .meta dd{margin:0}
+  .meta p{margin:4px 0 0;font-size:.88rem}
+  .dl{margin-top:auto;padding-top:10px}
+  .dl a{display:block;text-align:center;padding:8px;border-radius:4px;text-decoration:none;
+    background:#14243b;color:#fff;font-weight:600}
+  .dl a:hover,.dl a:focus-visible{background:#1f5fa8;outline:2px solid #1f5fa8;outline-offset:2px}
+  .empty{padding:40px 0;color:var(--muted)}
+</style>
+</head>
+<body>
+<header>
+  <h1>Sample plot files</h1>
+  <p>Pick a drawing and download the full HPGL file to plot it on your own machine. Previews are drawn from the file itself.</p>
+  <p><a href="index.html">Back to the origin corrector</a></p>
+</header>
+<main>
+  <div class="bar">
+    <label for="plotter">Plotter</label>
+    <select id="plotter"><option value="">All</option></select>
+  </div>
+  <div id="grid" class="grid" aria-live="polite"></div>
+</main>
+
+<script>
+(function(){
+  // Pen colours for SP1..SP8 (SP0 / unknown pens fall back to ink)
+  var PENS=["#14243b","#14243b","#c0392b","#1e7a46","#1f5fa8","#8e44ad","#d68910","#7f8c8d","#2c3e50"];
+
+  // Minimal HPGL reader: IN, SP, PU, PD, PA, PR. Ignores scaling (IP/SC), labels and HP-GL/2 PE.
+  function parse(text){
+    var segs=[], pen=1, down=false, abs=true, x=0, y=0, unsupported=false;
+    var cmds=text.split(/[;\n\r]+/);
+    for(var i=0;i<cmds.length;i++){
+      var c=cmds[i].trim(); if(c.length<2) continue;
+      var op=c.slice(0,2).toUpperCase(), args=c.slice(2);
+      if(op==="IN"){pen=1;down=false;abs=true;continue}
+      if(op==="SP"){pen=parseInt(args,10)||0;continue}
+      if(op==="PE"){unsupported=true;continue}
+      if(op==="PA"||op==="PR"||op==="PU"||op==="PD"){
+        if(op==="PA")abs=true; else if(op==="PR")abs=false;
+        else down=(op==="PD");
+        var n=args.match(/-?\d+(\.\d+)?/g)||[];
+        for(var k=0;k+1<n.length;k+=2){
+          var nx=parseFloat(n[k]), ny=parseFloat(n[k+1]);
+          if(!abs){nx+=x;ny+=y}
+          if(down&&pen>0) segs.push([x,y,nx,ny,pen]);
+          x=nx;y=ny;
+        }
+      }
+    }
+    return {segs:segs,unsupported:unsupported};
+  }
+
+  function draw(canvas,data){
+    var dpr=window.devicePixelRatio||1;
+    var w=canvas.clientWidth, h=canvas.clientHeight;
+    canvas.width=w*dpr; canvas.height=h*dpr;
+    var ctx=canvas.getContext("2d"); ctx.scale(dpr,dpr);
+    var s=data.segs; if(!s.length) return false;
+    var minX=1/0,minY=1/0,maxX=-1/0,maxY=-1/0;
+    s.forEach(function(g){
+      minX=Math.min(minX,g[0],g[2]);maxX=Math.max(maxX,g[0],g[2]);
+      minY=Math.min(minY,g[1],g[3]);maxY=Math.max(maxY,g[1],g[3]);
+    });
+    var pad=12, bw=(maxX-minX)||1, bh=(maxY-minY)||1;
+    var k=Math.min((w-2*pad)/bw,(h-2*pad)/bh);
+    var ox=(w-bw*k)/2, oy=(h-bh*k)/2;
+    ctx.lineWidth=1; ctx.lineCap="round";
+    var last=-1;
+    s.forEach(function(g){
+      if(g[4]!==last){ if(last!==-1) ctx.stroke(); ctx.beginPath(); ctx.strokeStyle=PENS[g[4]]||PENS[0]; last=g[4]; }
+      ctx.moveTo(ox+(g[0]-minX)*k, h-(oy+(g[1]-minY)*k));
+      ctx.lineTo(ox+(g[2]-minX)*k, h-(oy+(g[3]-minY)*k));
+    });
+    ctx.stroke();
+    return true;
+  }
+
+  var grid=document.getElementById("grid"), sel=document.getElementById("plotter"), items=[];
+
+  function el(tag,cls,txt){var e=document.createElement(tag);if(cls)e.className=cls;if(txt!=null)e.textContent=txt;return e}
+
+  function row(dl,label,val){
+    if(!val) return;
+    var d=el("div"); d.appendChild(el("dt",null,label)); d.appendChild(el("dd",null,val)); dl.appendChild(d);
+  }
+
+  var io=("IntersectionObserver" in window)?new IntersectionObserver(function(entries){
+    entries.forEach(function(en){ if(en.isIntersecting){ io.unobserve(en.target); en.target._load(); } });
+  },{rootMargin:"200px"}):null;
+
+  function render(){
+    grid.textContent="";
+    var f=sel.value;
+    var list=items.filter(function(it){return !f||it.plotter===f});
+    if(!list.length){grid.appendChild(el("p","empty","No sample files yet."));return}
+    list.forEach(function(it){
+      var card=el("article","card");
+      var thumb=el("div","thumb"); var cv=document.createElement("canvas");
+      cv.setAttribute("role","img"); cv.setAttribute("aria-label","Preview of "+it.title);
+      thumb.appendChild(cv); card.appendChild(thumb);
+      var m=el("div","meta"); m.appendChild(el("h2",null,it.title));
+      var dl=el("dl"); row(dl,"Plotter",it.plotter); row(dl,"Paper",it.paper); row(dl,"By",it.by); m.appendChild(dl);
+      if(it.notes) m.appendChild(el("p",null,it.notes));
+      var d=el("div","dl"); var a=el("a",null,"Download HPGL");
+      a.href=it.file; a.setAttribute("download",it.file.split("/").pop()); d.appendChild(a);
+      m.appendChild(d); card.appendChild(m); grid.appendChild(card);
+
+      cv._load=function(){
+        fetch(it.file).then(function(r){ if(!r.ok) throw 0; return r.text() }).then(function(t){
+          var data=parse(t);
+          if(!draw(cv,data)){ thumb.textContent=""; thumb.appendChild(el("span",null,
+            data.unsupported?"Preview unavailable for this file format. The download still works.":"No drawable lines found.")); }
+        }).catch(function(){ thumb.textContent=""; thumb.appendChild(el("span",null,"Could not load preview.")); });
+      };
+      if(io) io.observe(cv); else cv._load();
+    });
+  }
+
+  fetch("samples/index.json").then(function(r){return r.json()}).then(function(j){
+    items=j.samples||[];
+    var seen={}; items.forEach(function(it){ if(it.plotter&&!seen[it.plotter]){seen[it.plotter]=1;
+      var o=document.createElement("option");o.value=o.textContent=it.plotter;sel.appendChild(o);} });
+    render();
+  }).catch(function(){ grid.appendChild(el("p","empty","Could not load the sample list (samples/index.json).")); });
+  sel.addEventListener("change",render);
+})();
+</script>
+</body>
+</html>

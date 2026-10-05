@@ -1,0 +1,193 @@
+{
+    "samples":  [
+                    {
+                        "file":  "samples/7 OPERATION METHODS.plt",
+                        "size":  3684
+                    },
+                    {
+                        "file":  "samples/A320-A4.hpgl",
+                        "size":  38549
+                    },
+                    {
+                        "file":  "samples/abschlepper.hpgl",
+                        "size":  69164
+                    },
+                    {
+                        "file":  "samples/adler(1).HPGL",
+                        "size":  377301
+                    },
+                    {
+                        "file":  "samples/Adler.hpgl",
+                        "size":  170591
+                    },
+                    {
+                        "file":  "samples/An arrow through two heart.plt",
+                        "size":  1372
+                    },
+                    {
+                        "file":  "samples/Angry Birds .plt",
+                        "size":  3922
+                    },
+                    {
+                        "file":  "samples/avatar_aeskulap_www.hpgl",
+                        "size":  35435
+                    },
+                    {
+                        "file":  "samples/Baymax.plt",
+                        "size":  4778
+                    },
+                    {
+                        "file":  "samples/Brush_ChineseCharachter_²ê.plt",
+                        "size":  4538
+                    },
+                    {
+                        "file":  "samples/Brush_ChineseWords_++-O¦++=¦·¦+.plt",
+                        "size":  8455
+                    },
+                    {
+                        "file":  "samples/Brush_ChineseWords_+»+++-+¦+p¦¦+--˜.plt",
+                        "size":  4340
+                    },
+                    {
+                        "file":  "samples/Car.plt",
+                        "size":  10562
+                    },
+                    {
+                        "file":  "samples/ChineseCharacter_dragon.plt",
+                        "size":  71006
+                    },
+                    {
+                        "file":  "samples/columbia.hpgl",
+                        "size":  29353
+                    },
+                    {
+                        "file":  "samples/DOBOT.plt",
+                        "size":  2279
+                    },
+                    {
+                        "file":  "samples/Dobot@kickstarter.plt",
+                        "size":  13155
+                    },
+                    {
+                        "file":  "samples/DobotLOGO.plt",
+                        "size":  1839
+                    },
+                    {
+                        "file":  "samples/Dragon.plt",
+                        "size":  6726
+                    },
+                    {
+                        "file":  "samples/flap-drive-technical.hpgl",
+                        "size":  225050
+                    },
+                    {
+                        "file":  "samples/Glasses.plt",
+                        "size":  2140
+                    },
+                    {
+                        "file":  "samples/hp3.plt",
+                        "size":  90646
+                    },
+                    {
+                        "file":  "samples/hp5.plt",
+                        "size":  446182
+                    },
+                    {
+                        "file":  "samples/hp6.plt",
+                        "size":  845330
+                    },
+                    {
+                        "file":  "samples/hp10.PLT",
+                        "size":  4228916
+                    },
+                    {
+                        "file":  "samples/hp112.PLT",
+                        "size":  138035
+                    },
+                    {
+                        "file":  "samples/HP-9872CT.hpgl",
+                        "size":  15743
+                    },
+                    {
+                        "file":  "samples/Komatsu-klein.hpgl",
+                        "size":  99262
+                    },
+                    {
+                        "file":  "samples/kung Fu Panda.plt",
+                        "size":  14159
+                    },
+                    {
+                        "file":  "samples/Love Letter.plt",
+                        "size":  6764
+                    },
+                    {
+                        "file":  "samples/Magician.plt",
+                        "size":  2535
+                    },
+                    {
+                        "file":  "samples/monkey.plt",
+                        "size":  2854
+                    },
+                    {
+                        "file":  "samples/Northrop_B-2A.hpgl",
+                        "size":  31628
+                    },
+                    {
+                        "file":  "samples/Output.plt",
+                        "size":  136164
+                    },
+                    {
+                        "file":  "samples/pepito33.plt",
+                        "size":  242152
+                    },
+                    {
+                        "file":  "samples/r2d2.hpgl",
+                        "size":  30439
+                    },
+                    {
+                        "file":  "samples/SHUTTLE-1.hpgl",
+                        "size":  36742
+                    },
+                    {
+                        "file":  "samples/SHUTTLE-2.hpgl",
+                        "size":  68908
+                    },
+                    {
+                        "file":  "samples/space-COLUMBIA.hpgl",
+                        "size":  32728
+                    },
+                    {
+                        "file":  "samples/starwars-imperialwalker2.hpgl",
+                        "size":  43885
+                    },
+                    {
+                        "file":  "samples/steam-boat.plt",
+                        "size":  107829
+                    },
+                    {
+                        "file":  "samples/STPAULS.hpgl",
+                        "size":  146659
+                    },
+                    {
+                        "file":  "samples/test.hpgl",
+                        "size":  1505
+                    },
+                    {
+                        "file":  "samples/test-square.hpgl",
+                        "title":  "Test square",
+                        "plotter":  "Any",
+                        "paper":  "Not specified",
+                        "by":  "Spike",
+                        "notes":  "Tiny test file to confirm the gallery works. Delete this entry once you add real samples.",
+                        "size":  157
+                    },
+                    {
+                        "file":  "samples/Transformer.plt",
+                        "size":  1661
+                    },
+                    {
+                        "file":  "samples/why dobot .plt",
+                        "size":  2655
+                    }
+                ]
+}

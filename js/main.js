@@ -1,6 +1,9 @@
 // ── main.js ───────────────────────────────────────────────────────
 // Boot, event wiring, dropdown population, and top-level actions.
 
+// Highest zoom allowed, as a multiple (50 = 5000%). Raise it if you need more.
+const ZOOM_LIMIT = 50;
+
 function boot() {
   try {
     loadingMessage.style.display = "none";
@@ -31,6 +34,9 @@ function boot() {
     btnRotatePlus    = document.getElementById("btnRotatePlus");
     btnRotateReset   = document.getElementById("btnRotateReset");
     rotateAngleEl    = document.getElementById("rotateAngle");
+
+    // let the size slider reach the new zoom limit
+    zoomSlider.max = Math.round(ZOOM_LIMIT * 100);
 
     plotterSelect.innerHTML = Object.entries(PLOTTERS)
       .map(([key, p]) => `<option value="${key}">${p.name}</option>`)
@@ -94,8 +100,10 @@ function wireEvents() {
     }
   });
 
-  btnZoomIn.addEventListener("click", () => setZoom(zoomLevel + ZOOM_STEP_BTN));
-  btnZoomOut.addEventListener("click", () => setZoom(zoomLevel - ZOOM_STEP_BTN));
+  // Each click / wheel tick multiplies the zoom (instead of adding to it), so
+  // getting from 100% to a few thousand % takes a handful of steps.
+  btnZoomIn.addEventListener("click", () => setZoom(zoomLevel * (1 + ZOOM_STEP_BTN)));
+  btnZoomOut.addEventListener("click", () => setZoom(zoomLevel / (1 + ZOOM_STEP_BTN)));
   btnZoomReset.addEventListener("click", () => setZoom(1.0));
 
   // Wheel-to-zoom. Scoped to the whole previewCorrected box, not just the
@@ -119,8 +127,10 @@ function wireEvents() {
 
     e.preventDefault();
 
-    const delta = e.deltaY < 0 ? ZOOM_STEP_BTN : -ZOOM_STEP_BTN;
-    zoomLevel = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, zoomLevel + delta));
+    const next = e.deltaY < 0
+      ? zoomLevel * (1 + ZOOM_STEP_BTN)
+      : zoomLevel / (1 + ZOOM_STEP_BTN);
+    zoomLevel = Math.max(ZOOM_MIN, Math.min(ZOOM_LIMIT, next));
     const pct = Math.round(zoomLevel * 100);
     zoomPercentEl.textContent = pct + "%";
     zoomSlider.value = pct;
@@ -285,7 +295,7 @@ function updateRotateDisplay() {
 }
 
 function setZoom(z) {
-  zoomLevel = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, z));
+  zoomLevel = Math.max(ZOOM_MIN, Math.min(ZOOM_LIMIT, z));
   const pct = Math.round(zoomLevel * 100);
   zoomPercentEl.textContent = pct + "%";
   zoomSlider.value = pct;

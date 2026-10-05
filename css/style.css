@@ -76,9 +76,12 @@ header p { color: #666; font-size: 0.85rem; margin-top: 4px; }
   flex: 0 0 auto;
 }
 
+/* Corrected preview: at least 46% of the window height, and grows to use any
+   spare room at the bottom of the right-hand panel. */
 #previewCorrected {
-  height: 42vh;
-  min-height: 240px;
+  height: auto;
+  min-height: 46vh;
+  flex: 1 1 auto;
 }
 
 .preview-box canvas {
