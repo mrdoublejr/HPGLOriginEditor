@@ -15,7 +15,7 @@ header p { color: #666; font-size: 0.85rem; margin-top: 4px; }
   max-width: 1400px;
   margin: 0 auto;
   display: grid;
-  grid-template-columns: 1fr 1.3fr;
+  grid-template-columns: 1fr 1.5fr;
   gap: 14px;
 }
 
@@ -76,11 +76,12 @@ header p { color: #666; font-size: 0.85rem; margin-top: 4px; }
   flex: 0 0 auto;
 }
 
-/* Corrected preview: at least 46% of the window height, and grows to use any
-   spare room at the bottom of the right-hand panel. */
+/* Corrected preview: same starting size as the original layout (42% of the
+   window height), but allowed to grow into any spare room at the bottom of the
+   right-hand panel. It never makes the page taller. */
 #previewCorrected {
-  height: auto;
-  min-height: 46vh;
+  height: 42vh;
+  min-height: 240px;
   flex: 1 1 auto;
 }
 
@@ -153,7 +154,22 @@ header p { color: #666; font-size: 0.85rem; margin-top: 4px; }
   font-size: 0.78rem;
   color: #333;
 }
-.control-row .hint {
+/* Rotate / Size / Offset groups sit side by side on one line */
+.control-row { gap: 6px 14px; }
+.ctl-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: nowrap;
+}
+.ctl-group .control-label { min-width: 0; }
+.control-row .icon-btn { padding: 4px 8px; }
+.control-row .icon-btn.subtle { padding: 3px 6px; }
+.control-row input[type="range"] { width: 80px; }
+.control-row .rotate-angle,
+.control-row .zoom-pct { min-width: 36px; }
+
+.btn-row .hint {
   margin-left: auto;
   color: #999;
   font-size: 0.72rem;
@@ -188,12 +204,22 @@ header p { color: #666; font-size: 0.85rem; margin-top: 4px; }
   border-color: #d0d0d6;
   color: #333;
 }
+/* Flip buttons stay highlighted while a flip is switched on */
+.icon-btn.active,
+.icon-btn[aria-pressed="true"] {
+  background: #4a90d9;
+  border-color: #3a7bc8;
+  color: #fff;
+}
+.icon-btn.active:hover,
+.icon-btn[aria-pressed="true"]:hover { background: #3a7bc8; }
 
 .btn-row {
   margin-top: 10px;
   display: flex;
   align-items: center;
   gap: 12px;
+  flex-wrap: wrap;
 }
 button.btn-primary {
   padding: 10px 20px;
@@ -235,4 +261,33 @@ input[type="range"] {
 
 @media (max-width: 900px) {
   .container { grid-template-columns: 1fr; }
+}
+
+/* Fit the whole app in the window (no page scrolling) on wider screens.
+   The two preview boxes now share whatever height is left over after the
+   other controls, so selecting a file (which adds the file-info lines) makes
+   the previews a little shorter instead of pushing the page off screen. */
+@media (min-width: 901px) {
+  html, body { height: 100%; }
+  body {
+    height: 100vh;
+    height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  header { flex: 0 0 auto; margin-bottom: 8px; }
+  .container {
+    flex: 1 1 0;
+    min-height: 0;
+    width: 100%;
+    grid-template-rows: minmax(0, 1fr);
+  }
+  .panel { min-height: 0; overflow-y: auto; }
+  .preview-box,
+  #previewCorrected {
+    flex: 1 1 0;
+    height: auto;
+    min-height: 120px;
+  }
 }

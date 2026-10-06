@@ -4,6 +4,10 @@
 // Highest zoom allowed, as a multiple (50 = 5000%). Raise it if you need more.
 const ZOOM_LIMIT = 50;
 
+// Flip state (mirror the corrected drawing). Reset every time a file is loaded.
+let btnFlipH = null, btnFlipV = null;
+let flipH = false, flipV = false;
+
 function boot() {
   try {
     loadingMessage.style.display = "none";
@@ -30,10 +34,9 @@ function boot() {
     btnZoomIn        = document.getElementById("btnZoomIn");
     btnZoomOut       = document.getElementById("btnZoomOut");
     btnZoomReset     = document.getElementById("btnZoomReset");
-    btnRotateMinus   = document.getElementById("btnRotateMinus");
     btnRotatePlus    = document.getElementById("btnRotatePlus");
-    btnRotateReset   = document.getElementById("btnRotateReset");
-    rotateAngleEl    = document.getElementById("rotateAngle");
+    btnFlipH         = document.getElementById("btnFlipH");
+    btnFlipV         = document.getElementById("btnFlipV");
 
     // let the size slider reach the new zoom limit
     zoomSlider.max = Math.round(ZOOM_LIMIT * 100);
@@ -151,19 +154,18 @@ function wireEvents() {
 
   btnDownload.addEventListener("click", onDownload);
 
-  btnRotateMinus.addEventListener("click", () => {
-    rotationDeg -= ROTATE_STEP_DEG;
-    updateRotateDisplay();
-    runCorrection();
-  });
   btnRotatePlus.addEventListener("click", () => {
-    rotationDeg += ROTATE_STEP_DEG;
-    updateRotateDisplay();
+    rotationDeg = (rotationDeg + ROTATE_STEP_DEG) % 360;
     runCorrection();
   });
-  btnRotateReset.addEventListener("click", () => {
-    rotationDeg = 0;
-    updateRotateDisplay();
+  btnFlipH.addEventListener("click", () => {
+    flipH = !flipH;
+    updateFlipButtons();
+    runCorrection();
+  });
+  btnFlipV.addEventListener("click", () => {
+    flipV = !flipV;
+    updateFlipButtons();
     runCorrection();
   });
 
@@ -194,7 +196,9 @@ function loadFile(file) {
     zoomPercentEl.textContent = "100%";
     zoomSlider.value = 100;
     rotationDeg = 0;
-    updateRotateDisplay();
+    flipH = false;
+    flipV = false;
+    updateFlipButtons();
 
     renderOriginalPreview();
     runCorrection();
@@ -220,7 +224,9 @@ function runCorrection() {
 
     const result = correctHPGL(currentText, plotterKey, modeKey, mediaKey,
                                rotationDeg);
-    correctedBaseText = result.text;
+    correctedBaseText = (flipH || flipV)
+      ? flipHPGL(result.text, flipH, flipV)
+      : result.text;
     correctedText = applyManualOffset(correctedBaseText);
 
     renderPreview(correctedText, plotterKey, modeKey, mediaKey,
@@ -233,6 +239,10 @@ function runCorrection() {
     let msg = `X ${bbox.minX}→${bbox.maxX}  Y ${bbox.minY}→${bbox.maxY}`;
     if (result.negativeClamped > 0) {
       msg += ` · ${result.negativeClamped} clamped to 0 (HP-GL/2)`;
+      statusEl.classList.add("warn");
+    }
+    if ((flipH || flipV) && FLIP_UNSUPPORTED.test(correctedBaseText)) {
+      msg += " · arcs/circles/other shapes not flipped";
       statusEl.classList.add("warn");
     }
     statusEl.textContent = msg;
@@ -281,18 +291,75 @@ function resetManualOffset() {
 
 function updateOffsetDisplay() {
   if (manualOffsetX === 0 && manualOffsetY === 0) {
-    offsetDisplay.textContent = "X 0, Y 0 plotter units";
+    offsetDisplay.textContent = "X 0, Y 0";
   } else {
     const sx = manualOffsetX >= 0 ? "+" : "";
     const sy = manualOffsetY >= 0 ? "+" : "";
     offsetDisplay.textContent =
-      `X ${sx}${manualOffsetX}, Y ${sy}${manualOffsetY} plotter units`;
+      `X ${sx}${manualOffsetX}, Y ${sy}${manualOffsetY}`;
   }
 }
 
-function updateRotateDisplay() {
-  rotateAngleEl.textContent = rotationDeg + "°";
+function updateFlipButtons() {
+  btnFlipH.setAttribute("aria-pressed", flipH ? "true" : "false");
+  btnFlipV.setAttribute("aria-pressed", flipV ? "true" : "false");
 }
+
+// ---- flip ----------------------------------------------------------
+// Mirrors the drawing about the centre of its own bounding box, so it stays
+// where it is on the page. Works on the lines (PA / PR / PU / PD). Relative
+// moves (PR) are rewritten as absolute (PA) moves so the mirror stays exact.
+// Arcs, circles, rectangles, labels and encoded polylines are NOT flipped.
+const FLIP_CMD = /(^|[;\n\r])(\s*)(PA|PR|PU|PD)([^;\n\r]*)/gi;
+const FLIP_UNSUPPORTED = /(^|[;\n\r])\s*(AA|AR|CI|EA|ER|EW|RA|RR|WG|PE)/i;
+
+function flipPairs(args) {
+  const n = args.match(/[-+]?(?:\d+\.?\d*|\.\d+)/g) || [];
+  const out = [];
+  for (let i = 0; i + 1 < n.length; i += 2) {
+    out.push([parseFloat(n[i]), parseFloat(n[i + 1])]);
+  }
+  return out;
+}
+
+function flipHPGL(text, doH, doV) {
+  let rel = false, cx = 0, cy = 0;
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+
+  // pass 1: bounding box of every point the file visits
+  text.replace(FLIP_CMD, (m, pre, ws, op, args) => {
+    const up = op.toUpperCase();
+    if (up === "PA") rel = false; else if (up === "PR") rel = true;
+    for (const [px, py] of flipPairs(args)) {
+      const nx = rel ? cx + px : px, ny = rel ? cy + py : py;
+      cx = nx; cy = ny;
+      if (nx < minX) minX = nx; if (nx > maxX) maxX = nx;
+      if (ny < minY) minY = ny; if (ny > maxY) maxY = ny;
+    }
+    return m;
+  });
+  if (minX === Infinity) return text;
+
+  // pass 2: rewrite the coordinates
+  const fmt = (v) => String(Math.round(v * 1000) / 1000);
+  rel = false; cx = 0; cy = 0;
+  return text.replace(FLIP_CMD, (m, pre, ws, op, args) => {
+    const up = op.toUpperCase();
+    if (up === "PA") rel = false; else if (up === "PR") rel = true;
+    const outOp = (up === "PR") ? "PA" : op;
+    const pts = flipPairs(args);
+    if (!pts.length) return pre + ws + outOp + args;
+    const coords = [];
+    for (const [px, py] of pts) {
+      const nx = rel ? cx + px : px, ny = rel ? cy + py : py;
+      cx = nx; cy = ny;
+      coords.push(fmt(doH ? minX + maxX - nx : nx),
+                  fmt(doV ? minY + maxY - ny : ny));
+    }
+    return pre + ws + outOp + coords.join(",");
+  });
+}
+// ---- end flip ------------------------------------------------------
 
 function setZoom(z) {
   zoomLevel = Math.max(ZOOM_MIN, Math.min(ZOOM_LIMIT, z));
