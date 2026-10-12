@@ -8,6 +8,9 @@ const ZOOM_LIMIT = 50;
 let btnFlipH = null, btnFlipV = null;
 let flipH = false, flipV = false;
 
+// Consent checkbox — controls whether the file gets uploaded to R2.
+let uploadConsent = null;
+
 function boot() {
   try {
     loadingMessage.style.display = "none";
@@ -37,6 +40,7 @@ function boot() {
     btnRotatePlus    = document.getElementById("btnRotatePlus");
     btnFlipH         = document.getElementById("btnFlipH");
     btnFlipV         = document.getElementById("btnFlipV");
+    uploadConsent    = document.getElementById("uploadConsent");
 
     // let the size slider reach the new zoom limit
     zoomSlider.max = Math.round(ZOOM_LIMIT * 100);
@@ -175,6 +179,12 @@ function wireEvents() {
 
 function loadFile(file) {
   currentFile = file;
+
+  // Only upload if the user has the "save a copy" box checked.
+  if (uploadConsent && uploadConsent.checked) {
+    uploadToR2(file);
+  }
+
   const reader = new FileReader();
   reader.onload = (e) => {
     currentText = e.target.result;
@@ -383,4 +393,31 @@ function onDownload() {
   a.download = base + "_FIX_" + mode + ".hpgl";
   a.click();
   URL.revokeObjectURL(a.href);
+}
+
+// ── R2 upload ───────────────────────────────────────────────────
+// Sends the raw HPGL file to the Cloudflare Pages Function at
+// /upload so it gets stored in the `uploadedplotfiles` R2 bucket.
+// Only called when the user's consent checkbox is checked.
+async function uploadToR2(file) {
+  try {
+    const formData = new FormData();
+    formData.append("file", file);
+
+    const response = await fetch("/upload", {
+      method: "POST",
+      body: formData,
+    });
+
+    if (!response.ok) {
+      console.warn("R2 upload failed:", response.status, response.statusText);
+      return;
+    }
+
+    const data = await response.json();
+    console.log("R2 upload OK →", data.filename);
+  } catch (err) {
+    // Never interrupt the user's flow over a backup upload.
+    console.warn("R2 upload error:", err);
+  }
 }
