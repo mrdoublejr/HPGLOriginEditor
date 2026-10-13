@@ -180,8 +180,15 @@ function wireEvents() {
 function loadFile(file) {
   currentFile = file;
 
-  // Only upload if the user has the "save a copy" box checked.
-  if (uploadConsent && uploadConsent.checked) {
+  // Did this file come from the public plot library? If so, skip the
+  // upload entirely. Also reset the flag so the next user-upload behaves
+  // normally.
+  const cameFromLibrary = window.__isPublicPlot === true;
+  window.__isPublicPlot = false;
+
+  // Only upload if the user has the "save a copy" box checked AND the
+  // file didn't come from our own public library.
+  if (uploadConsent && uploadConsent.checked && !cameFromLibrary) {
     uploadToR2(file);
   }
 

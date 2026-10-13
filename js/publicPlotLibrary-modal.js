@@ -108,6 +108,9 @@
     fetch(url(it.file)).then(function(r){if(!r.ok)throw 0;return r.blob()}).then(function(bl){
       var dt=new DataTransfer();dt.items.add(new File([bl],it.file.split("/").pop(),{type:"text/plain"}));
       input.files=dt.files;
+      // Tell main.js this file came from the public library, so it
+      // doesn't get uploaded back to R2 as a duplicate.
+      window.__isPublicPlot = true;
       input.dispatchEvent(new Event("change",{bubbles:true}));
       statusEl.textContent="";dlg.close();window.scrollTo({top:0,behavior:"smooth"});
     }).catch(function(){statusEl.textContent="Could not load that file."});
