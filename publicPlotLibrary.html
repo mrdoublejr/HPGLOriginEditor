@@ -157,12 +157,12 @@
     });
   }
 
-  fetch("samples/index.json").then(function(r){return r.json()}).then(function(j){
-    items=j.samples||[];
+  fetch("publicPlotLibrary/index.json").then(function(r){return r.json()}).then(function(j){
+    items=j.publicPlotLibrary||[];
     var seen={}; items.forEach(function(it){ if(it.plotter&&!seen[it.plotter]){seen[it.plotter]=1;
       var o=document.createElement("option");o.value=o.textContent=it.plotter;sel.appendChild(o);} });
     render();
-  }).catch(function(){ grid.appendChild(el("p","empty","Could not load the sample list (samples/index.json).")); });
+  }).catch(function(){ grid.appendChild(el("p","empty","Could not load the sample list (publicPlotLibrary/index.json).")); });
   sel.addEventListener("change",render);
 })();
 </script>

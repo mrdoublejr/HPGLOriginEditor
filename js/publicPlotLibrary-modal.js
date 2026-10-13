@@ -1,11 +1,11 @@
-/* Sample plot explorer for the HPGL Origin Corrector.
+/* publicPlotLibrary plot explorer for the HPGL Origin Corrector.
    Add to index.html just before the other scripts / </body>:
-     <script src="samples-modal.js" defer></script>
-   Drop plot files into the repo's samples/ folder; they appear automatically.
+     <script src="publicPlotLibrary-modal.js" defer></script>
+   Drop plot files into the repo's publicPlotLibrary/ folder; they appear automatically.
    Click a thumbnail to load that plot into the corrector. */
 (function(){
-  var CFG=window.SAMPLES_CONFIG||{};
-  var FOLDER=CFG.path||"samples";
+  var CFG=window.publicPlotLibrary_CONFIG||{};
+  var FOLDER=CFG.path||"publicPlotLibrary";
   var EXT=/\.(hpgl|plt|hpg)$/i;          // same types the corrector's file picker accepts
   var MAX_PREVIEW_BYTES=3*1024*1024;     // bigger files: no preview, still clickable
   var MAX_PARALLEL=4;                    // simultaneous preview downloads
@@ -58,9 +58,9 @@
   function fmtOf(f){var m=/\.([^./]+)$/.exec(f);return m?m[1].toUpperCase():"OTHER"}
 
   // Where the file list comes from, in order of preference:
-  //  - on github.io: GitHub's API listing of the samples/ folder
-  //  - anywhere else (VS Code Live Server, etc.): the server's directory listing of samples/
-  //  - last resort: samples/index.json (write it with build-samples-index.js; may also hold
+  //  - on github.io: GitHub's API listing of the publicPlotLibrary/ folder
+  //  - anywhere else (VS Code Live Server, etc.): the server's directory listing of publicPlotLibrary/
+  //  - last resort: publicPlotLibrary/index.json (write it with build-publicPlotLibrary-index.js; may also hold
   //    optional title/plotter/paper/notes per file)
   function makeItem(path,m,size){
     m=m||{};var name=path.split("/").pop();
@@ -91,7 +91,7 @@
   function getItems(){
     var meta={},onPages=/\.github\.io$/i.test(location.hostname);
     return readJSON(FOLDER+"/index.json").then(function(j){
-      var l=j.samples||[];l.forEach(function(x){meta[x.file]=x});return l;
+      var l=j.publicPlotLibrary||[];l.forEach(function(x){meta[x.file]=x});return l;
     }).catch(function(){return []}).then(function(manual){
       var primary=onPages?fromGitHub:fromDirListing;
       return primary(meta).catch(function(){
@@ -100,7 +100,7 @@
     });
   }
 
-  /* ---------- load a sample into the corrector ---------- */
+  /* ---------- load a publicPlotLibrary into the corrector ---------- */
   function loadIntoCorrector(it,dlg,statusEl){
     var input=document.getElementById("fileInput");
     if(!input){statusEl.textContent="Could not find the corrector's file input.";return}
@@ -145,17 +145,17 @@
   function init(){
     document.head.appendChild(el("style",null,css));
 
-    var btn=document.getElementById("open-samples");
+    var btn=document.getElementById("open-publicPlotLibrary");
     if(!btn){
-      btn=el("button",null,"Browse sample plots");btn.type="button";
+      btn=el("button",null,"Browse public plots");btn.type="button";
       var dz=document.getElementById("dropZone");
       if(dz&&dz.parentNode){btn.className="sm-open";dz.parentNode.insertBefore(btn,dz.nextSibling)}
-      else{btn.id="sm-btn";btn.textContent="Samples";document.body.appendChild(btn)}
+      else{btn.id="sm-btn";btn.textContent="publicPlotLibrary";document.body.appendChild(btn)}
     }
 
     var dlg=el("dialog");dlg.id="sm-dlg";dlg.setAttribute("aria-labelledby","sm-title");
     var top=el("div","sm-top"),r1=el("div","sm-row"),r2=el("div","sm-row");
-    var t=el("h2",null,"Sample plots");t.id="sm-title";
+    var t=el("h2",null,"Public plots");t.id="sm-title";
     var status=el("span","sm-status");
     var x=el("button","sm-x","\u00d7");x.type="button";x.setAttribute("aria-label","Close");
     r1.appendChild(t);r1.appendChild(status);r1.appendChild(x);
