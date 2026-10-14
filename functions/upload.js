@@ -74,6 +74,9 @@ export async function onRequestPost({ request, env }) {
       .replace(/[^A-Za-z0-9._-]+/g, "_").replace(/\.{2,}/g, "_").replace(/^[._-]+/, "");
     base = base.slice(0, 70) || "upload";
     const name = base + ext;
+    // the visitor's exact file name (just the file part, no control characters), kept in
+    // the database so a stored plot can be given its real name again later
+    const exactName = original.split(/[\\/]/).pop().replace(/[\x00-\x1f\x7f]/g, "").slice(0, 255);
 
     // must look like a text plot file
     const data = await file.arrayBuffer();
@@ -87,8 +90,8 @@ export async function onRequestPost({ request, env }) {
     const now = new Date().toISOString();
 
     const added = await env.DB.prepare(
-      "INSERT OR IGNORE INTO uploads (fingerprint, original_name, size, first_seen, last_seen) VALUES (?, ?, ?, ?, ?)"
-    ).bind(fingerprint, name, data.byteLength, now, now).run();
+      "INSERT OR IGNORE INTO uploads (fingerprint, original_name, original_filename, size, first_seen, last_seen) VALUES (?, ?, ?, ?, ?, ?)"
+    ).bind(fingerprint, name, exactName, data.byteLength, now, now).run();
 
     if (!added.meta.changes) {
       // already known: just count it
