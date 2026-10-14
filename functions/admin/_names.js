@@ -3,24 +3,30 @@
 
 const PLOT_EXT = /\.(hpgl|plt|hpg|txt)$/i;
 
-// File names already in the public library (read from publicPlotLibrary/index.json), lowercase.
-export async function libraryNames(request, env) {
-  const out = new Set();
+// Names of the plot files listed in publicPlotLibrary/index.json, as written (just the file name).
+export async function libraryFileNames(request, env) {
+  const out = [];
   try {
     const r = await env.ASSETS.fetch(new URL("/publicPlotLibrary/index.json", request.url));
     if (!r.ok) return out;
+    const seen = new Set();
     const walk = (v) => {
       if (typeof v === "string") {
         const base = v.split("/").pop();
         let name = base;
         try { name = decodeURIComponent(base); } catch (e) { /* keep as is */ }
-        if (PLOT_EXT.test(name)) out.add(name.toLowerCase());
+        if (PLOT_EXT.test(name) && !seen.has(name)) { seen.add(name); out.push(name); }
       } else if (Array.isArray(v)) v.forEach(walk);
       else if (v && typeof v === "object") Object.values(v).forEach(walk);
     };
     walk(await r.json());
   } catch (e) { /* no library list: treat as empty */ }
   return out;
+}
+
+// The same names, lowercase, as a Set (for "is this name taken?" checks).
+export async function libraryNames(request, env) {
+  return new Set((await libraryFileNames(request, env)).map((n) => n.toLowerCase()));
 }
 
 // The visitor's own file name, made safe for a Windows/Mac/Linux folder.

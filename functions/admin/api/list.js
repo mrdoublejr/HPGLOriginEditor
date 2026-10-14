@@ -1,25 +1,51 @@
-// GET /admin/api/list : every stored plot, newest last, with the name it should have when exported.
-import { libraryNames, cleanExportName, exportNames } from "../_names.js";
+// GET /admin/api/list : every stored plot, with the name it should have when exported and
+// whether the public library already holds the same plot (compared by content, not by name).
+import { libraryFileNames, cleanExportName, exportNames } from "../_names.js";
 
 export async function onRequestGet({ request, env }) {
   if (!env.DB) return json(500, { error: "database binding DB is missing" });
+
   const { results } = await env.DB.prepare(
-    "SELECT id, object_key, original_name, original_filename, size, first_seen, last_seen, times_seen FROM uploads ORDER BY id"
+    "SELECT id, object_key, original_name, original_filename, fingerprint, size, first_seen, last_seen, times_seen FROM uploads ORDER BY id"
   ).all();
-  const lib = await libraryNames(request, env);
-  const names = exportNames(results, lib);
-  const rows = results.map((r) => ({
-    id: r.id,
-    key: r.object_key,
-    exportName: names.get(r.id),
-    originalName: r.original_filename || r.original_name,
-    size: r.size,
-    firstSeen: r.first_seen,
-    lastSeen: r.last_seen,
-    timesSeen: r.times_seen,
-    inLibrary: lib.has(cleanExportName(r).toLowerCase()),
-  }));
-  return json(200, { rows, libraryCount: lib.size });
+
+  const libNames = await libraryFileNames(request, env);
+  const libLower = new Set(libNames.map((n) => n.toLowerCase()));
+
+  // fingerprints of the library files, saved by /admin/api/sync-library
+  let libRows = [], needsSetup = false;
+  try {
+    libRows = (await env.DB.prepare("SELECT name, fingerprint FROM library_files").all()).results
+      .filter((r) => libNames.includes(r.name));
+  } catch (e) {
+    needsSetup = true; // the library_files table has not been created yet
+  }
+  const byFingerprint = new Map();
+  for (const r of libRows) {
+    if (!byFingerprint.has(r.fingerprint)) byFingerprint.set(r.fingerprint, []);
+    byFingerprint.get(r.fingerprint).push(r.name);
+  }
+
+  const names = exportNames(results, libLower);
+  const rows = results.map((r) => {
+    const same = byFingerprint.get(r.fingerprint) || [];
+    return {
+      id: r.id,
+      key: r.object_key,
+      exportName: names.get(r.id),
+      originalName: r.original_filename || r.original_name,
+      size: r.size,
+      firstSeen: r.first_seen,
+      lastSeen: r.last_seen,
+      timesSeen: r.times_seen,
+      sameAs: same,                                                   // library files with identical content
+      nameTaken: !same.length && libLower.has(cleanExportName(r).toLowerCase()), // same name, different plot
+    };
+  });
+  return json(200, {
+    rows,
+    library: { total: libNames.length, scanned: libRows.length, needsSetup },
+  });
 }
 
 function json(status, obj) {

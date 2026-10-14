@@ -28,6 +28,10 @@
   .orig { color:var(--mute); font-size:.85rem; }
   .tag { font-size:.75rem; padding:1px 6px; border-radius:10px; border:1px solid var(--warn); color:var(--warn); margin-left:6px; }
   .num { text-align:right; }
+  .tabs { display:flex; gap:6px; flex-wrap:wrap; }
+  .tabs button[aria-pressed="true"] { background:var(--accent); border-color:var(--accent); color:#fff; }
+  .tag.ok { border-color:#2e9e5b; color:#2e9e5b; }
+  #lib { color:var(--mute); font-size:.85rem; margin:0 0 12px; }
   #msg { color:var(--mute); padding:14px; }
   #msg.err { color:#c0392b; }
 </style>
@@ -39,8 +43,15 @@
   <div class="bar">
     <button id="zip" class="primary" disabled>Download selected as ZIP</button>
     <button id="reload">Refresh</button>
+    <button id="rescan" title="Read every file in publicPlotLibrary again">Rescan library</button>
     <span id="count" class="sub" style="margin:0"></span>
   </div>
+  <div class="bar tabs" role="group" aria-label="Show">
+    <button id="tNew" aria-pressed="true">New</button>
+    <button id="tIn" aria-pressed="false">Already in library</button>
+    <button id="tAll" aria-pressed="false">All</button>
+  </div>
+  <p id="lib"></p>
   <div class="card">
     <div id="msg">Loading…</div>
     <table id="tbl" hidden>
@@ -55,25 +66,52 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script>
 (function () {
-  var rows = [];
+  var rows = [], view = "new", lib = { total: 0, scanned: 0, needsSetup: false }, unreadable = [], scanning = false;
   var $ = function (id) { return document.getElementById(id); };
 
   function fmtSize(n) { return n < 1024 ? n + " B" : n < 1048576 ? (n / 1024).toFixed(1) + " KB" : (n / 1048576).toFixed(1) + " MB"; }
   function fmtDate(s) { var d = new Date(s); return isNaN(d) ? "" : d.toLocaleDateString() + " " + d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }); }
   function say(text, err) { var m = $("msg"); m.textContent = text; m.className = err ? "err" : ""; m.hidden = !text; }
+  function post(url, body) {
+    return fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
+      .then(function (r) { if (!r.ok) throw new Error("Server said " + r.status); return r.json(); });
+  }
 
+  function visible() {
+    return rows.filter(function (r) {
+      return view === "all" || (view === "in" ? r.sameAs.length > 0 : r.sameAs.length === 0);
+    });
+  }
   function selected() {
-    return rows.filter(function (r) { return document.getElementById("c" + r.id).checked; });
+    return visible().filter(function (r) { var c = document.getElementById("c" + r.id); return c && c.checked; });
   }
   function updateButtons() {
     var n = selected().length;
     $("zip").disabled = n === 0;
     $("zip").textContent = n ? "Download " + n + " as ZIP" : "Download selected as ZIP";
   }
+  function countOf(fn) { return rows.filter(fn).length; }
+
+  function libLine() {
+    var t = $("lib");
+    if (lib.needsSetup) { t.textContent = "Library comparison is not set up yet: create the library_files table in the database (see the instructions), then press Refresh."; return; }
+    var s = "Library: " + lib.scanned + " of " + lib.total + " files compared by content.";
+    if (scanning) s = "Comparing with the library… " + lib.scanned + " of " + lib.total;
+    if (unreadable.length) s += " Could not read: " + unreadable.join(", ") + ".";
+    t.textContent = s;
+  }
 
   function render() {
+    $("tNew").textContent = "New (" + countOf(function (r) { return r.sameAs.length === 0; }) + ")";
+    $("tIn").textContent = "Already in library (" + countOf(function (r) { return r.sameAs.length > 0; }) + ")";
+    $("tAll").textContent = "All (" + rows.length + ")";
+    ["tNew", "tIn", "tAll"].forEach(function (id) {
+      $(id).setAttribute("aria-pressed", String((id === "tNew" && view === "new") || (id === "tIn" && view === "in") || (id === "tAll" && view === "all")));
+    });
+
+    var list = visible();
     var body = $("body"); body.textContent = "";
-    rows.forEach(function (r) {
+    list.forEach(function (r) {
       var tr = document.createElement("tr");
       var td = function (cls) { var t = document.createElement("td"); if (cls) t.className = cls; tr.appendChild(t); return t; };
 
@@ -82,8 +120,11 @@
 
       var t = td();
       var nm = document.createElement("div"); nm.className = "name"; nm.textContent = r.exportName;
-      if (r.inLibrary) {
-        var tag = document.createElement("span"); tag.className = "tag"; tag.textContent = "name already in library";
+      if (r.sameAs.length) {
+        var ok = document.createElement("span"); ok.className = "tag ok"; ok.textContent = "same plot as " + r.sameAs.join(", ");
+        nm.appendChild(ok);
+      } else if (r.nameTaken) {
+        var tag = document.createElement("span"); tag.className = "tag"; tag.textContent = "name used by a different library plot";
         nm.appendChild(tag);
       }
       t.appendChild(nm);
@@ -99,27 +140,50 @@
       a.href = "/admin/api/file?id=" + r.id; td().appendChild(a);
       body.appendChild(tr);
     });
-    $("tbl").hidden = rows.length === 0;
+    $("tbl").hidden = list.length === 0;
     $("all").checked = false;
-    $("count").textContent = rows.length + " plot" + (rows.length === 1 ? "" : "s");
-    say(rows.length ? "" : "No uploads yet.");
+    $("count").textContent = list.length + " shown";
+    say(list.length ? "" : (rows.length ? (view === "new" ? "Nothing new: every upload is already in the library." : "Nothing here.") : "No uploads yet."));
+    libLine();
     updateButtons();
   }
 
   function load() {
     say("Loading…");
-    fetch("/admin/api/list", { cache: "no-store" }).then(function (r) {
+    return fetch("/admin/api/list", { cache: "no-store" }).then(function (r) {
       if (!r.ok) throw new Error(r.status === 403 ? "Not signed in (403)" : "Server said " + r.status);
       return r.json();
-    }).then(function (j) { rows = j.rows; render(); })
+    }).then(function (j) { rows = j.rows; lib = j.library; render(); })
       .catch(function (e) { $("tbl").hidden = true; say("Could not load the list: " + e.message, true); });
   }
 
+  // read the library files a few at a time, then reload the list
+  function scan(restart) {
+    if (scanning || lib.needsSetup) return Promise.resolve();
+    scanning = true; unreadable = [];
+    function step(first) {
+      return post("/admin/api/sync-library", { restart: !!(first && restart), skip: unreadable }).then(function (j) {
+        lib.total = j.total; lib.scanned = j.scanned;
+        unreadable = unreadable.concat(j.failed || []);
+        libLine();
+        return j.remaining > 0 ? step(false) : j;
+      });
+    }
+    return step(true).catch(function (e) { $("lib").textContent = "Library comparison failed: " + e.message; })
+      .then(function () { scanning = false; return load(); });
+  }
+
+  function setView(v) { view = v; render(); }
+  $("tNew").addEventListener("click", function () { setView("new"); });
+  $("tIn").addEventListener("click", function () { setView("in"); });
+  $("tAll").addEventListener("click", function () { setView("all"); });
+
   $("all").addEventListener("change", function () {
-    rows.forEach(function (r) { document.getElementById("c" + r.id).checked = $("all").checked; });
+    visible().forEach(function (r) { document.getElementById("c" + r.id).checked = $("all").checked; });
     updateButtons();
   });
-  $("reload").addEventListener("click", load);
+  $("reload").addEventListener("click", function () { load().then(function () { if (lib.scanned < lib.total) scan(false); }); });
+  $("rescan").addEventListener("click", function () { scan(true); });
 
   $("zip").addEventListener("click", function () {
     var picked = selected();
@@ -142,7 +206,7 @@
       .then(updateButtons);
   });
 
-  load();
+  load().then(function () { if (!lib.needsSetup && lib.scanned < lib.total) scan(false); });
 })();
 </script>
 </body>
