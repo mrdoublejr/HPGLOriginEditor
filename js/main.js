@@ -422,7 +422,7 @@ async function uploadToR2(file) {
     }
 
     const data = await response.json();
-    console.log("R2 upload OK →", data.filename);
+    console.log("R2 upload OK →", data.filename || data.status);
   } catch (err) {
     // Never interrupt the user's flow over a backup upload.
     console.warn("R2 upload error:", err);
