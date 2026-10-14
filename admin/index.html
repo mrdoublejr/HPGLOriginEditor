@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Uploads – admin</title>
+<style>
+  :root { --bg:#f5f7fa; --card:#fff; --ink:#1b2430; --mute:#5b6b7e; --line:#dde3ea; --accent:#1f6feb; --warn:#b8801a; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#12171d; --card:#1a2129; --ink:#e6ebf1; --mute:#9aa8b8; --line:#2a343f; --accent:#5aa2ff; --warn:#e0b050; }
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.45 system-ui, Segoe UI, sans-serif; }
+  main { max-width:1100px; margin:0 auto; padding:20px 16px 40px; }
+  h1 { font-size:1.3rem; margin:0 0 4px; }
+  .sub { color:var(--mute); margin:0 0 16px; }
+  .bar { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:12px; }
+  button, .btn { font:inherit; padding:6px 12px; border:1px solid var(--line); border-radius:6px; background:var(--card); color:var(--ink); cursor:pointer; text-decoration:none; }
+  button.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
+  button:disabled { opacity:.5; cursor:default; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:8px; overflow-x:auto; }
+  table { width:100%; border-collapse:collapse; }
+  th, td { text-align:left; padding:8px 10px; border-bottom:1px solid var(--line); white-space:nowrap; }
+  th { color:var(--mute); font-weight:600; font-size:.85rem; }
+  tr:last-child td { border-bottom:0; }
+  .name { font-weight:600; }
+  .orig { color:var(--mute); font-size:.85rem; }
+  .tag { font-size:.75rem; padding:1px 6px; border-radius:10px; border:1px solid var(--warn); color:var(--warn); margin-left:6px; }
+  .num { text-align:right; }
+  #msg { color:var(--mute); padding:14px; }
+  #msg.err { color:#c0392b; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Uploaded plots</h1>
+  <p class="sub">Files visitors sent in. Download them under their own names, ready for the public library.</p>
+  <div class="bar">
+    <button id="zip" class="primary" disabled>Download selected as ZIP</button>
+    <button id="reload">Refresh</button>
+    <span id="count" class="sub" style="margin:0"></span>
+  </div>
+  <div class="card">
+    <div id="msg">Loading…</div>
+    <table id="tbl" hidden>
+      <thead><tr>
+        <th><input type="checkbox" id="all" aria-label="Select all"></th>
+        <th>Name</th><th class="num">Size</th><th class="num">Sent</th><th>First</th><th>Last</th><th></th>
+      </tr></thead>
+      <tbody id="body"></tbody>
+    </table>
+  </div>
+</main>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script>
+(function () {
+  var rows = [];
+  var $ = function (id) { return document.getElementById(id); };
+
+  function fmtSize(n) { return n < 1024 ? n + " B" : n < 1048576 ? (n / 1024).toFixed(1) + " KB" : (n / 1048576).toFixed(1) + " MB"; }
+  function fmtDate(s) { var d = new Date(s); return isNaN(d) ? "" : d.toLocaleDateString() + " " + d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }); }
+  function say(text, err) { var m = $("msg"); m.textContent = text; m.className = err ? "err" : ""; m.hidden = !text; }
+
+  function selected() {
+    return rows.filter(function (r) { return document.getElementById("c" + r.id).checked; });
+  }
+  function updateButtons() {
+    var n = selected().length;
+    $("zip").disabled = n === 0;
+    $("zip").textContent = n ? "Download " + n + " as ZIP" : "Download selected as ZIP";
+  }
+
+  function render() {
+    var body = $("body"); body.textContent = "";
+    rows.forEach(function (r) {
+      var tr = document.createElement("tr");
+      var td = function (cls) { var t = document.createElement("td"); if (cls) t.className = cls; tr.appendChild(t); return t; };
+
+      var c = document.createElement("input"); c.type = "checkbox"; c.id = "c" + r.id;
+      c.addEventListener("change", updateButtons); td().appendChild(c);
+
+      var t = td();
+      var nm = document.createElement("div"); nm.className = "name"; nm.textContent = r.exportName;
+      if (r.inLibrary) {
+        var tag = document.createElement("span"); tag.className = "tag"; tag.textContent = "name already in library";
+        nm.appendChild(tag);
+      }
+      t.appendChild(nm);
+      if (r.originalName && r.originalName !== r.exportName) {
+        var o = document.createElement("div"); o.className = "orig"; o.textContent = "sent as " + r.originalName; t.appendChild(o);
+      }
+      td("num").textContent = fmtSize(r.size);
+      td("num").textContent = r.timesSeen + "×";
+      td().textContent = fmtDate(r.firstSeen);
+      td().textContent = fmtDate(r.lastSeen);
+
+      var a = document.createElement("a"); a.className = "btn"; a.textContent = "Download";
+      a.href = "/admin/api/file?id=" + r.id; td().appendChild(a);
+      body.appendChild(tr);
+    });
+    $("tbl").hidden = rows.length === 0;
+    $("all").checked = false;
+    $("count").textContent = rows.length + " plot" + (rows.length === 1 ? "" : "s");
+    say(rows.length ? "" : "No uploads yet.");
+    updateButtons();
+  }
+
+  function load() {
+    say("Loading…");
+    fetch("/admin/api/list", { cache: "no-store" }).then(function (r) {
+      if (!r.ok) throw new Error(r.status === 403 ? "Not signed in (403)" : "Server said " + r.status);
+      return r.json();
+    }).then(function (j) { rows = j.rows; render(); })
+      .catch(function (e) { $("tbl").hidden = true; say("Could not load the list: " + e.message, true); });
+  }
+
+  $("all").addEventListener("change", function () {
+    rows.forEach(function (r) { document.getElementById("c" + r.id).checked = $("all").checked; });
+    updateButtons();
+  });
+  $("reload").addEventListener("click", load);
+
+  $("zip").addEventListener("click", function () {
+    var picked = selected();
+    if (!picked.length) return;
+    if (typeof JSZip === "undefined") { say("The ZIP helper did not load. Use the Download buttons instead.", true); return; }
+    var btn = $("zip"); btn.disabled = true; btn.textContent = "Preparing…";
+    var zip = new JSZip();
+    Promise.all(picked.map(function (r) {
+      return fetch("/admin/api/file?id=" + r.id).then(function (resp) {
+        if (!resp.ok) throw new Error(r.exportName + ": " + resp.status);
+        return resp.blob();
+      }).then(function (b) { zip.file(r.exportName, b); });
+    })).then(function () { return zip.generateAsync({ type: "blob" }); })
+      .then(function (blob) {
+        var a = document.createElement("a");
+        a.href = URL.createObjectURL(blob); a.download = "plots.zip"; a.click();
+        setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
+      })
+      .catch(function (e) { say("ZIP failed: " + e.message, true); })
+      .then(updateButtons);
+  });
+
+  load();
+})();
+</script>
+</body>
+</html>
