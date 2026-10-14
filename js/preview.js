@@ -1,6 +1,9 @@
 // ── preview.js ────────────────────────────────────────────────────
 // Canvas rendering for original and corrected previews.
-// Rotation is NOT applied here — corrected coordinates already include it.
+// Rotation of the plot itself is NOT applied here — corrected coordinates already include it.
+// The VIEW is turned 90° clockwise: the paper's long side (plotter Y, "Length")
+// runs left-to-right and its short side (plotter X, "Width") runs top-to-bottom,
+// so the whole page fits a wide, short preview box without squashing.
 
 // Pen colours for the preview (pen 1 stays dark like before; SP0 / unknown pens too).
 const PEN_COLORS = ["#222", "#222", "#c0392b", "#1e7a46", "#1f5fa8",
@@ -39,6 +42,10 @@ function parsePenPaths(text) {
   return out;
 }
 
+// Which way plotter +Y points on screen (−1 = right, +1 = left). Set by renderPreview
+// and used by the drag code below.
+let lastYSign = -1;
+
 function renderPreview(text, plotterKey, modeKey, mediaKey, targetBox,
                        enableDrag) {
   const p = PLOTTERS[plotterKey];
@@ -47,134 +54,139 @@ function renderPreview(text, plotterKey, modeKey, mediaKey, targetBox,
   const margins = p.margins;
   if (!media || !mode) return;
 
-  const pageW = media.across * IN_TO_PU;
-  const pageH = media.along  * IN_TO_PU;
+  // Remember what was drawn so the box can be redrawn when the window is resized.
+  targetBox.__previewArgs = [text, plotterKey, modeKey, mediaKey, targetBox, enableDrag];
+  watchPreviewBox(targetBox);
 
-  const targetArea = 333 * 333;  // ~1/3 of a 1000px × 1000px square
-  const aspect = pageW / pageH;
-  const canvasW = Math.round(Math.sqrt(targetArea * aspect));
-  const canvasH = Math.round(Math.sqrt(targetArea / aspect));
+  const pageW = media.across * IN_TO_PU;   // plotter X extent  (short side, "Width")
+  const pageH = media.along  * IN_TO_PU;   // plotter Y extent  (long side,  "Length")
+
+  const origin = mode.origin;
+  const isEdge = (origin !== "center");
+  const starR    = isEdge ? 10 : 6;
+  const starArm  = isEdge ? 15 : 10;
+
+  // Plotter +Y points down the page in "top-left" mode, up it in every other mode.
+  const ySign = (origin === "top-left") ? 1 : -1;
+  lastYSign = ySign;
+
+  // ── Page rectangle in plotter units (x = across, y = along) ──
+  let xa, xb, ya, yb;
+  switch (origin) {
+    case "center":            xa = -pageW / 2; xb = pageW / 2; ya = -pageH / 2; yb = pageH / 2; break;
+    case "center-x-bottom-y": xa = -pageW / 2; xb = pageW / 2; ya = 0;          yb = pageH;     break;
+    default:                  xa = 0;          xb = pageW;     ya = 0;          yb = pageH;     break;
+  }
+
+  // ── Canvas size: use the real size of the box, so text stays readable ──
+  // Room around the page: origin star on the edges, dimension labels bottom/right.
+  const padL = isEdge ? 20 : 12, padT = 22;
+  const padR = 30, padB = 26;
 
   targetBox.innerHTML = "";
   targetBox.style.minHeight = "0";
+  // One-line summary, drawn inside the canvas (top strip) so no height is lost below it.
+  const infoFull =
+    `${media.across} × ${media.along} in · ${Math.round(pageW)} × ${Math.round(pageH)} PU · ` +
+    `${describeOrigin(origin)} · margins ${margins.side}/${margins.lead}/${margins.trail}mm · ` +
+    `plot ${Math.round(zoomLevel * 100)}%`;
+  const infoShort =
+    `${media.across} × ${media.along} in · ${describeOrigin(origin)} · plot ${Math.round(zoomLevel * 100)}%`;
+
+  let availW = targetBox.clientWidth;
+  let availH = targetBox.clientHeight - 2;
+  if (availW < 80 || availH < 60) { availW = 420; availH = 300; }
+  targetBox.__previewSize = [targetBox.clientWidth, targetBox.clientHeight];
+
+  // The page, turned 90° clockwise, is pageH wide and pageW tall.
+  const aspect = pageH / pageW;
+  let innerW = Math.min(availW - padL - padR, (availH - padT - padB) * aspect);
+  innerW = Math.max(innerW, 60);
+  const innerH = innerW / aspect;
+  // If the box is bigger than the page needs, the canvas still runs edge to edge.
+  const slackX = Math.max(0, availW - (innerW + padL + padR));
+  const slackY = Math.max(0, availH - (innerH + padT + padB));
+  // Corrected preview: page sits against the right-hand side; any spare width goes on the left.
+  const left = padL + (enableDrag ? slackX : slackX / 2);
+  const top  = padT + slackY / 2;
+  const canvasW = Math.round(innerW + padL + padR + slackX);
+  const canvasH = Math.round(innerH + padT + padB + slackY);
 
   const canvas = document.createElement("canvas");
-  canvas.width = canvasW;
-  canvas.height = canvasH;
-  canvas.style.width = "100%";
-  canvas.style.height = "auto";
+  canvas.style.width = canvasW + "px";
+  canvas.style.height = canvasH + "px";
   canvas.style.background = "#fff";
   canvas.style.border = "1px solid #ddd";
   canvas.style.borderRadius = "6px";
   targetBox.appendChild(canvas);
 
-  // Crisper drawing: give the canvas as many pixels as the screen actually shows.
-  // All the layout maths below stays in the original canvasW × canvasH units.
-  const shownW = canvas.getBoundingClientRect().width || canvasW;
-  const hiRes = Math.min(3, Math.max(1, (shownW * (window.devicePixelRatio || 1)) / canvasW));
+  // Crisper drawing on high-density screens. All layout maths below is in CSS pixels.
+  const hiRes = Math.min(3, Math.max(1, window.devicePixelRatio || 1));
   canvas.width = Math.round(canvasW * hiRes);
   canvas.height = Math.round(canvasH * hiRes);
 
   const ctx = canvas.getContext("2d");
   ctx.scale(hiRes, hiRes);
 
-  const origin = mode.origin;
-  const isEdge = (origin !== "center");
-  const marginPx = isEdge ? 22 : 14;
-  const starR    = isEdge ? 10 : 6;
-  const starArm  = isEdge ? 15 : 10;
-
-  // Scale so the page fits the canvas. For edge origins, the origin is
-  // at (marginPx, marginPx), so the page must fit in the reduced space.
-  const usableW = canvasW - (isEdge ? marginPx : 0);
-  const usableH = canvasH - (isEdge ? marginPx : 0);
-  const baseS = Math.min(usableW / pageW, usableH / pageH);
+  // ── Plotter units → screen pixels (view turned 90° clockwise) ──
+  //   plotter X  →  down the screen
+  //   plotter Y  →  right (left in "top-left" mode)
+  const baseS = Math.min(innerW / pageH, innerH / pageW);
   const s = baseS * zoomLevel;
   lastCanvasScale = s;
 
-  let ox, oy;
-  switch (origin) {
-    case "center":            ox = canvasW / 2;       oy = canvasH / 2;       break;
-    case "center-x-bottom-y": ox = canvasW / 2;       oy = canvasH - marginPx; break;
-    case "bottom-left":       ox = marginPx;          oy = canvasH - marginPx; break;
-    case "top-left":          ox = marginPx;          oy = marginPx;         break;
-    default:                  ox = canvasW / 2;       oy = canvasH / 2;
-  }
-
-  const ySign = (origin === "top-left") ? 1 : -1;
+  // Screen position of the plotter origin (0,0)
+  const ox = (ySign < 0) ? left - baseS * ya : left + baseS * yb;
+  const oy = top - baseS * xa;
+  const SX = (y, sc) => ox + sc * (-ySign) * y;
+  const SY = (x, sc) => oy + sc * x;
+  // Rectangle (in plotter units) → screen rectangle {left, top, w, h}
+  const scrRect = (x1, x2, y1, y2, sc) => {
+    const l = Math.min(SX(y1, sc), SX(y2, sc)), r = Math.max(SX(y1, sc), SX(y2, sc));
+    const t = Math.min(SY(x1, sc), SY(x2, sc)), b = Math.max(SY(x1, sc), SY(x2, sc));
+    return { left: l, top: t, w: r - l, h: b - t };
+  };
 
   // ── Page outline ──
+  const page = scrRect(xa, xb, ya, yb, baseS);
   ctx.strokeStyle = "#bbb";
   ctx.lineWidth = 1;
-  if (origin === "center") {
-    const left   = ox - (pageW / 2) * baseS;
-    const right  = ox + (pageW / 2) * baseS;
-    const top    = oy - (pageH / 2) * baseS;
-    const bottom = oy + (pageH / 2) * baseS;
-    ctx.strokeRect(left, top, right - left, bottom - top);
-  } else if (origin === "center-x-bottom-y") {
-    const left   = ox - (pageW / 2) * baseS;
-    const right  = ox + (pageW / 2) * baseS;
-    const bottom = oy;
-    const top    = oy - pageH * baseS;
-    ctx.strokeRect(left, top, right - left, bottom - top);
-  } else if (origin === "bottom-left") {
-    const left = ox;
-    const top = oy - pageH * baseS;
-    const right = ox + pageW * baseS;
-    const bottom = oy;
-    ctx.strokeRect(left, top, right - left, bottom - top);
-  } else if (origin === "top-left") {
-    const left = ox;
-    const top = oy;
-    const right = ox + pageW * baseS;
-    const bottom = oy + pageH * baseS;
-    ctx.strokeRect(left, top, right - left, bottom - top);
-  }
+  ctx.strokeRect(page.left, page.top, page.w, page.h);
 
   // ── Dashed red margin box ──
   const sidePU  = margins.side  * PU_PER_MM;
   const leadPU  = margins.lead  * PU_PER_MM;
   const trailPU = margins.trail * PU_PER_MM;
 
-  let mrect;
+  // side margins are along X (page width); lead/trail margins are along Y (page length)
+  let mx1, mx2, my1, my2;
   switch (origin) {
     case "center":
-      mrect = { left: -pageW/2 + sidePU, right: pageW/2 - sidePU,
-                bottom: -pageH/2 + leadPU, top: pageH/2 - trailPU };
+      mx1 = -pageW/2 + sidePU; mx2 = pageW/2 - sidePU;
+      my1 = -pageH/2 + leadPU; my2 = pageH/2 - trailPU;
       break;
     case "center-x-bottom-y":
-      mrect = { left: -pageW/2 + sidePU, right: pageW/2 - sidePU,
-                bottom: leadPU, top: pageH - trailPU };
+      mx1 = -pageW/2 + sidePU; mx2 = pageW/2 - sidePU;
+      my1 = leadPU;            my2 = pageH - trailPU;
       break;
-    case "bottom-left":
-      mrect = { left: sidePU, right: pageW - sidePU,
-                bottom: leadPU, top: pageH - trailPU };
-      break;
-    case "top-left":
-      mrect = { left: sidePU, right: pageW - sidePU,
-                bottom: pageH - trailPU, top: leadPU };
-      break;
+    default: // bottom-left, top-left
+      mx1 = sidePU; mx2 = pageW - sidePU;
+      my1 = leadPU; my2 = pageH - trailPU;
   }
 
-  if (mrect) {
-    const rx1 = ox + mrect.left  * baseS;
-    const rx2 = ox + mrect.right * baseS;
-    const ry1 = oy + ySign * mrect.top    * baseS;
-    const ry2 = oy + ySign * mrect.bottom * baseS;
-
+  {
+    const m = scrRect(mx1, mx2, my1, my2, baseS);
     ctx.save();
     ctx.strokeStyle = "#cc2222";
     ctx.lineWidth = 2;
     ctx.setLineDash([8, 5]);
-    ctx.strokeRect(Math.min(rx1, rx2), Math.min(ry1, ry2),
-                   Math.abs(rx2 - rx1), Math.abs(ry2 - ry1));
+    ctx.strokeRect(m.left, m.top, m.w, m.h);
     ctx.setLineDash([]);
     ctx.fillStyle = "#cc2222";
     ctx.font = "10px system-ui, sans-serif";
     ctx.textAlign = "left";
     ctx.textBaseline = "top";
-    ctx.fillText("plot area", Math.min(rx1, rx2) + 4, Math.min(ry1, ry2) + 4);
+    ctx.fillText("plot area", m.left + 4, m.top + 4);
     ctx.restore();
   }
 
@@ -209,8 +221,8 @@ function renderPreview(text, plotterKey, modeKey, mediaKey, targetBox,
     ctx.beginPath();
     for (let i = 0; i < pts.length; i++) {
       const [x, y] = pts[i];
-      const px = ox + x * s;
-      const py = oy + ySign * y * s;
+      const px = SX(y, s);
+      const py = SY(x, s);
       if (i === 0) ctx.moveTo(px, py);
       else ctx.lineTo(px, py);
     }
@@ -241,20 +253,94 @@ function renderPreview(text, plotterKey, modeKey, mediaKey, targetBox,
   ctx.stroke();
   ctx.restore();
 
-  // ── Info label ──
-  const info = document.createElement("div");
-  info.style.marginTop = "8px";
-  info.style.fontSize = "0.8rem";
-  info.style.color = "#777";
-  info.style.textAlign = "center";
-  info.textContent =
-    `${media.across} × ${media.along} in · ` +
-    `${Math.round(pageW)} × ${Math.round(pageH)} PU · ` +
-    `${describeOrigin(origin)} · margins ${margins.side}/${margins.lead}/${margins.trail}mm · ` +
-    `plot ${Math.round(zoomLevel * 100)}%`;
-  targetBox.appendChild(info);
+  // ── Dimension labels: Length (plotter Y) along the bottom, Width (plotter X) down the right side ──
+  drawDimensions(ctx, page, media);
+
+  ctx.save();
+  ctx.font = "11px system-ui, sans-serif";
+  ctx.fillStyle = "#777";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  const infoText = (ctx.measureText(infoFull).width <= canvasW - 150) ? infoFull : infoShort;
+  ctx.fillText(infoText, canvasW / 2, 11);
+  ctx.restore();
 
   if (enableDrag) attachDragHandlers();
+}
+
+// Draws the two dimension lines with arrowheads and labels around the page rectangle.
+function drawDimensions(ctx, page, media) {
+  const right = page.left + page.w, bottom = page.top + page.h;
+  const col = "#666";
+  ctx.save();
+  ctx.strokeStyle = col;
+  ctx.fillStyle = col;
+  ctx.lineWidth = 1;
+  ctx.setLineDash([]);
+  ctx.font = "600 11px system-ui, sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+
+  const arrow = (x, y, dx, dy) => {           // small filled arrowhead at (x,y) pointing (dx,dy)
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x - dx * 7 + dy * 3, y - dy * 7 + dx * 3);
+    ctx.lineTo(x - dx * 7 - dy * 3, y - dy * 7 - dx * 3);
+    ctx.closePath();
+    ctx.fill();
+  };
+  const tag = (label, cx, cy, rotate) => {     // label on a white patch so the line doesn't run through it
+    ctx.save();
+    ctx.translate(cx, cy);
+    if (rotate) ctx.rotate(-Math.PI / 2);
+    const w = ctx.measureText(label).width + 10;
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(-w / 2, -8, w, 16);
+    ctx.fillStyle = "#333";
+    ctx.fillText(label, 0, 0);
+    ctx.restore();
+  };
+
+  // Length (plotter Y): horizontal, below the page
+  const yy = bottom + 15;
+  ctx.beginPath();
+  ctx.moveTo(page.left, bottom + 3); ctx.lineTo(page.left, yy + 4);
+  ctx.moveTo(right, bottom + 3);     ctx.lineTo(right, yy + 4);
+  ctx.moveTo(page.left, yy);         ctx.lineTo(right, yy);
+  ctx.stroke();
+  arrow(page.left, yy, -1, 0);
+  arrow(right, yy, 1, 0);
+  tag(`Length (Y)  ${media.along} in`, page.left + page.w / 2, yy, false);
+
+  // Width (plotter X): vertical, right of the page, text reads bottom-to-top
+  const xx = right + 20;
+  ctx.beginPath();
+  ctx.moveTo(right + 3, page.top);   ctx.lineTo(xx + 4, page.top);
+  ctx.moveTo(right + 3, bottom);     ctx.lineTo(xx + 4, bottom);
+  ctx.moveTo(xx, page.top);          ctx.lineTo(xx, bottom);
+  ctx.stroke();
+  arrow(xx, page.top, 0, -1);
+  arrow(xx, bottom, 0, 1);
+  tag(`Width (X)  ${media.across} in`, xx, page.top + page.h / 2, true);
+
+  ctx.restore();
+}
+
+// Redraw a preview when its box changes size (window resized, file info lines
+// appearing, etc.) — the canvas is now drawn at the box's real pixel size.
+function watchPreviewBox(box) {
+  if (box.__watched || typeof ResizeObserver === "undefined") return;
+  box.__watched = true;
+  let timer = null;
+  new ResizeObserver(() => {
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      const last = box.__previewSize, args = box.__previewArgs;
+      if (!args || !last) return;
+      if (Math.abs(box.clientWidth - last[0]) < 2 && Math.abs(box.clientHeight - last[1]) < 2) return;
+      renderPreview(...args);
+    }, 80);
+  }).observe(box);
 }
 
 // ── Drag-to-reposition on the corrected canvas ───────────────────
@@ -281,10 +367,10 @@ function onDragMove(e) {
   const dxPx = e.clientX - dragState.startPx;
   const dyPx = e.clientY - dragState.startPy;
 
-  const dxPU = Math.round( dxPx / lastCanvasScale);
-  const dyPU = Math.round(
-    (hpglVersion.value === "hpgl2" ? dyPx : -dyPx) / lastCanvasScale
-  );
+  // The view is turned 90° clockwise: screen-down is plotter X,
+  // screen-right is plotter Y (screen-left in "top-left" mode).
+  const dxPU = Math.round(dyPx / lastCanvasScale);
+  const dyPU = Math.round((-lastYSign * dxPx) / lastCanvasScale);
 
   manualOffsetX = dragState.startOffsetX + dxPU;
   manualOffsetY = dragState.startOffsetY + dyPU;

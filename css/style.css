@@ -12,7 +12,7 @@ header h1 { font-size: 1.4rem; font-weight: 600; }
 header p { color: #666; font-size: 0.85rem; margin-top: 4px; }
 
 .container {
-  max-width: 1400px;
+  max-width: none;
   margin: 0 auto;
   display: grid;
   grid-template-columns: 1fr 1.5fr;
@@ -169,7 +169,7 @@ header p { color: #666; font-size: 0.85rem; margin-top: 4px; }
 .control-row .rotate-angle,
 .control-row .zoom-pct { min-width: 36px; }
 
-.btn-row .hint {
+.control-row .hint {
   margin-left: auto;
   color: #999;
   font-size: 0.72rem;
@@ -290,4 +290,14 @@ input[type="range"] {
     height: auto;
     min-height: 120px;
   }
+}
+
+/* Download button now lives in the control row (saves a row of height for the preview) */
+.control-row .btn-primary { padding: 6px 14px; font-size: 0.85rem; }
+.ctl-download { flex-wrap: wrap; }
+
+/* Slimmer header on wide screens: title and tagline on one line */
+@media (min-width: 901px) {
+  header { display: flex; justify-content: center; align-items: baseline; gap: 12px; }
+  header p { margin-top: 0; }
 }
