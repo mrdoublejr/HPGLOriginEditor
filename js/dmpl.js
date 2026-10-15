@@ -461,7 +461,10 @@
     }
     if (cur) lines.push(`${n} DATA ${cur}`);
     if (n > 63999) warn("cbm-lines", "The program needs more line numbers than BASIC allows (63999); the plot is too detailed for the 1520.");
-    const text = lines.join("\r\n") + "\r\n";
+    // Lower case on purpose: VICE's paste and the petcat tokenizer both read lower-case
+    // ASCII as the C64's normal (unshifted) letters; upper case would come out as
+    // graphics characters. On a real C64 it lists in capitals as usual.
+    const text = (lines.join("\r\n") + "\r\n").toLowerCase();
     if (text.length > 38000) warn("cbm-c64", `The program is about ${Math.round(text.length / 1024)} KB, likely too big for a C64's 38 KB of BASIC memory.`);
     else if (text.length > 3500) warn("cbm-vic", `The program is about ${Math.round(text.length / 1024)} KB; it won't fit an unexpanded VIC-20 (3.5 KB).`);
     return { text, segments, outOfRange };
