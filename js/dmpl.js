@@ -1,19 +1,26 @@
 // ── dmpl.js ───────────────────────────────────────────────────────
-// Turns the corrected HP-GL into DM/PL for the TRS-80 Multi-Pen Plotter (26-1191).
+// Turns the corrected HP-GL into DM/PL for Houston Instrument DM/PL plotters:
+// the TRS-80 Multi-Pen Plotter (26-1191) and the HiPlot DMP-3, 4, 6 and 7.
 //
 // The corrector does all the positioning in HP-GL plotter units (bottom-left
-// origin for this plotter). This file only translates the finished HP-GL:
+// origin, the DM/PL home position). This file only translates the finished HP-GL:
 //   1 HP-GL unit = 0.025 mm (1016 per inch)  →  1 plotter step = 0.005 in (200 per inch)
 //
-// Commands sent, all from the 26-1191 owner's manual (Using the Plotter / Appendix C):
+// Commands sent. All are in the 26-1191 owner's manual (Using the Plotter / Appendix C),
+// and Appendix B of Houston Instrument's DM/PL Command Language manual (1984) lists
+// every one of them for the DMP-3, 4, 6, 7, 8 and 9, whatever the serial number:
 //   ;:  plotter select      H  home (lower left)     A  absolute positioning
 //   U / D  pen up / down    x,y  move to coordinate   Pn  new pen (0-6; P0 = stow pen)
-//   Srh text_  character plotting (r = rotation 1-4, h = height 1-9)   @  deselect
-// The 26-1191 has no EC command; it always works in 0.005 in steps.
+//   S text_  character plotting   @  deselect
+// Neither the 26-1191 nor the DMP-3..9 has the EC command; they work in 0.005 in steps.
+//
+// Text height codes differ (textStyle option):
+//   "trs80": Srh  with h a single digit 1-9           (26-1191 owner's manual, Table 7)
+//   "dmpl":  Srhh with hh "1 ","1+","2 " ... "5 "      (DM/PL manual 2.6.1, Table 2-4a)
 // CC/CA exist on this plotter but take a centre relative to the pen, so arcs,
 // circles and rectangles are sent as short line segments instead.
 //
-// Public:  hpglToDmpl(text, { pens, stepsPerInch, maxX, maxY })
+// Public:  hpglToDmpl(text, { pens, stepsPerInch, maxX, maxY, textStyle })
 //          → { text, warnings: [..], segments, outOfRange }
 
 (function () {
@@ -24,9 +31,16 @@
   // HP-GL default character size in cm when SI is not given (assumed: 0.19 wide x 0.27 high)
   const SI_DEFAULT_W = 0.19, SI_DEFAULT_H = 0.27;
 
-  // Character height codes 1-9 and their heights in inches (26-1191 owner's manual, Table 7)
-  const TEXT_CODES = ["1", "2", "3", "4", "5", "6", "7", "8", "9"];
-  const TEXT_SIZES_IN = [0.07, 0.105, 0.14, 0.21, 0.28, 0.42, 0.56, 0.85, 1.12];
+  // Character height codes and their heights in inches at 0.005 in steps.
+  const TEXT_STYLES = {
+    // 26-1191 owner's manual, Table 7. Followed by a space, as in the manual's "S13 TANDY".
+    trs80: { codes: ["1 ", "2 ", "3 ", "4 ", "5 ", "6 ", "7 ", "8 ", "9 "],
+             sizes: [0.07, 0.105, 0.14, 0.21, 0.28, 0.42, 0.56, 0.85, 1.12] },
+    // DM/PL manual 2.6.1 / Table 2-4a: a two-byte field; 1-5 are followed by a space,
+    // the "+" sizes are not.
+    dmpl:  { codes: ["1 ", "1+", "2 ", "2+", "3 ", "3+", "4 ", "4+", "5 "],
+             sizes: [0.07, 0.105, 0.14, 0.21, 0.28, 0.42, 0.56, 0.84, 1.12] },
+  };
 
   // ---------------------------------------------------------------- tokenizer
   function tokenize(src) {
@@ -287,14 +301,15 @@
     const fx = v => Math.round(v * factor);
 
     // Character height code nearest to the HP-GL label height (SI is in cm).
+    const style = TEXT_STYLES[opt.textStyle] || TEXT_STYLES.trs80;
     function textCode(hcm) {
       const want = hcm / 2.54;
       let best = 0, bestErr = Infinity;
-      TEXT_SIZES_IN.forEach((sz, k) => {
+      style.sizes.forEach((sz, k) => {
         const err = Math.abs(Math.log(sz / want));
         if (err < bestErr) { bestErr = err; best = k; }
       });
-      return TEXT_CODES[best];
+      return style.codes[best];
     }
 
     // Leading space: the manual advises sending a character before the first ;:
@@ -346,8 +361,7 @@
         pending = { x, y };
         flushMove();
         if (state !== "U") { toks.push("U "); state = "U"; }
-        // Same form as the manual's example "S13 TANDY"
-        toks.push(`S1${textCode(op.h)} ${op.text}_ `);
+        toks.push(`S1${textCode(op.h)}${op.text}_ `);
         state = null; last = null;   // pen state and position after text aren't tracked
       }
     }
@@ -373,7 +387,8 @@
   }
 
   window.hpglToDmpl = function (text, options) {
-    const opt = Object.assign({ pens: 6, stepsPerInch: 200, maxX: 1850, maxY: 1400, labels: true }, options || {});
+    const opt = Object.assign({ pens: 6, stepsPerInch: 200, maxX: 1850, maxY: 1400, labels: true,
+                                textStyle: "trs80" }, options || {});
     const warnings = new Map();
     const warn = (k, m) => { if (!warnings.has(k)) warnings.set(k, m); };
     const ops = interpret(tokenize(text), opt, warn);

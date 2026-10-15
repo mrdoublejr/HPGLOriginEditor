@@ -393,6 +393,7 @@ function convertToDmpl(text) {
     stepsPerInch: spi,
     maxX: Math.round(media.across * spi),
     maxY: Math.round(media.along * spi),
+    textStyle: mode.textStyle || "trs80",
   });
 }
 

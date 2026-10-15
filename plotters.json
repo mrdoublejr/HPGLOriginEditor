@@ -100,5 +100,92 @@
       "Plot area (9¼ × 7 in)": { "across": 9.25, "along": 7 }
     },
     "defaultMedia": "Plot area (9¼ × 7 in)"
+  },
+  "hi_dmp3": {
+    "name": "Houston Instrument HiPlot DMP-3",
+    "unitsPerMM": 40,
+    "pens": 6,
+    "defaultMode": "dmpl",
+    "margins": { "side": 0, "lead": 0, "trail": 0 },
+    "modes": {
+      "dmpl": {
+        "label": "DM/PL (bottom-left origin, 0.005 in steps)",
+        "origin": "bottom-left",
+        "allowNegative": false,
+        "output": "dmpl",
+        "stepsPerInch": 200,
+        "textStyle": "dmpl"
+      }
+    },
+    "media": {
+      "Plot area (10 × 7 in, per manual)": { "across": 10, "along": 7 }
+    },
+    "defaultMedia": "Plot area (10 × 7 in, per manual)"
+  },
+
+  "hi_dmp4": {
+    "name": "Houston Instrument HiPlot DMP-4",
+    "unitsPerMM": 40,
+    "pens": 6,
+    "defaultMode": "dmpl",
+    "margins": { "side": 0, "lead": 0, "trail": 0 },
+    "modes": {
+      "dmpl": {
+        "label": "DM/PL (bottom-left origin, 0.005 in steps)",
+        "origin": "bottom-left",
+        "allowNegative": false,
+        "output": "dmpl",
+        "stepsPerInch": 200,
+        "textStyle": "dmpl"
+      }
+    },
+    "media": {
+      "Plot area (10 × 7 in, per manual)": { "across": 10, "along": 7 }
+    },
+    "defaultMedia": "Plot area (10 × 7 in, per manual)"
+  },
+
+  "hi_dmp6": {
+    "name": "Houston Instrument HiPlot DMP-6",
+    "unitsPerMM": 40,
+    "pens": 8,
+    "defaultMode": "dmpl",
+    "margins": { "side": 0, "lead": 0, "trail": 0 },
+    "modes": {
+      "dmpl": {
+        "label": "DM/PL (bottom-left origin, 0.005 in steps)",
+        "origin": "bottom-left",
+        "allowNegative": false,
+        "output": "dmpl",
+        "stepsPerInch": 200,
+        "textStyle": "dmpl"
+      }
+    },
+    "media": {
+      "Plot area (14.25 × 9.85 in, measured)": { "across": 14.25, "along": 9.85 }
+    },
+    "defaultMedia": "Plot area (14.25 × 9.85 in, measured)"
+  },
+
+  "hi_dmp7": {
+    "name": "Houston Instrument HiPlot DMP-7",
+    "unitsPerMM": 40,
+    "pens": 8,
+    "defaultMode": "dmpl",
+    "margins": { "side": 0, "lead": 0, "trail": 0 },
+    "modes": {
+      "dmpl": {
+        "label": "DM/PL (bottom-left origin, 0.005 in steps)",
+        "origin": "bottom-left",
+        "allowNegative": false,
+        "output": "dmpl",
+        "stepsPerInch": 200,
+        "textStyle": "dmpl"
+      }
+    },
+    "media": {
+      "Plot area (15 × 10 in, per manual)": { "across": 15, "along": 10 }
+    },
+    "defaultMedia": "Plot area (15 × 10 in, per manual)"
   }
 }
