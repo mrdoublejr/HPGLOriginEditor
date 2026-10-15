@@ -123,6 +123,27 @@
     "defaultMedia": "A3 (plot 380 × 270 mm)"
   },
 
+  "cbm1520": {
+    "name": "Commodore 1520 Printer Plotter",
+    "unitsPerMM": 40,
+    "pens": 4,
+    "defaultMode": "c64basic",
+    "margins": { "side": 0, "lead": 0, "trail": 0 },
+    "modes": {
+      "c64basic": {
+        "label": "C64 BASIC program (device 6, 0.2 mm steps)",
+        "origin": "bottom-left",
+        "allowNegative": false,
+        "output": "c64basic",
+        "stepsPerInch": 127
+      }
+    },
+    "media": {
+      "114 mm roll (plot 96 × 199.8 mm)": { "across": 3.77953, "along": 7.86614 }
+    },
+    "defaultMedia": "114 mm roll (plot 96 × 199.8 mm)"
+  },
+
   "trs80_261191": {
     "name": "TRS-80 Multi-Pen Plotter (26-1191)",
     "unitsPerMM": 40,

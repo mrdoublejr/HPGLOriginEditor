@@ -329,7 +329,7 @@ function refreshStatus() {
     ? `X ${bbox.minX}→${bbox.maxX}  Y ${bbox.minY}→${bbox.maxY}`
     : "No coordinates";
   if (lastNegativeClamped > 0) {
-    msg += ` · ${lastNegativeClamped} clamped to 0 (${getMode().output === "dmpl" ? "DM/PL" : "HP-GL/2"})`;
+    msg += ` · ${lastNegativeClamped} clamped to 0 (${OUTPUT_FORMATS[getMode().output]?.name || "HP-GL/2"})`;
     statusEl.classList.add("warn");
   }
   if ((flipH || flipV) && FLIP_UNSUPPORTED.test(correctedBaseText)) {
@@ -337,13 +337,14 @@ function refreshStatus() {
     statusEl.classList.add("warn");
   }
 
-  // DM/PL plotters: convert now so any problems show before downloading.
-  if (getMode().output === "dmpl") {
-    const dm = convertToDmpl(out);
-    msg += ` · DM/PL ${dm.text.length} bytes`;
-    if (dm.warnings.length) {
-      msg += ` · ${dm.warnings.length} DM/PL note${dm.warnings.length !== 1 ? "s" : ""} (hover)`;
-      statusEl.title = dm.warnings.join("\n");
+  // DM/PL or C64 BASIC plotters: convert now so any problems show before downloading.
+  const fmt = OUTPUT_FORMATS[getMode().output];
+  if (fmt) {
+    const conv = fmt.convert(out);
+    msg += ` · ${fmt.name} ${conv.text.length} bytes`;
+    if (conv.warnings.length) {
+      msg += ` · ${conv.warnings.length} ${fmt.name} note${conv.warnings.length !== 1 ? "s" : ""} (hover)`;
+      statusEl.title = conv.warnings.join("\n");
       statusEl.classList.add("warn");
     }
   }
@@ -377,11 +378,32 @@ function updatePlotterInfo() {
     `${p.pens} pen${p.pens !== 1 ? 's' : ''} · ${describeOrigin(mode.origin)} · ` +
     `${mode.allowNegative ? "negatives allowed" : "no negatives"} · ` +
     `margin ${p.margins.side}/${p.margins.lead}mm`;
-  if (mode.output === "dmpl") plotterInfo.textContent += " · output DM/PL";
+  const fmt = OUTPUT_FORMATS[mode.output];
+  if (fmt) plotterInfo.textContent += ` · output ${fmt.name}`;
   // Single-pen DM/PL plotters (DMP-41/42) ignore pen changes unless Pen Pause is
   // turned on at the control panel; then they stop for a manual pen swap.
   if (mode.penPause) plotterInfo.textContent += " · colour changes need Pen Pause on";
-  btnDownload.textContent = (mode.output === "dmpl") ? "Download DM/PL" : "Download HPGL";
+  btnDownload.textContent = fmt ? `Download ${fmt.name}` : "Download HPGL";
+}
+
+// Plotters that don't take HP-GL. A mode's "output" key picks one of these;
+// modes without one download the corrected HP-GL unchanged.
+const OUTPUT_FORMATS = {
+  dmpl:     { name: "DM/PL",      ext: ".dmpl", convert: (t) => convertToDmpl(t) },
+  c64basic: { name: "C64 BASIC",  ext: ".bas",  convert: (t) => convertToCbm1520(t) },
+};
+
+// Commodore 1520: a BASIC program for a C64/VIC-20. The step range comes from
+// the selected media (plot area) size at the mode's steps per inch (0.2 mm steps).
+function convertToCbm1520(text) {
+  const p = PLOTTERS[plotterSelect.value];
+  const mode = getMode();
+  const media = p.media[mediaSelect.value];
+  const spi = mode.stepsPerInch || 127;
+  return hpglToCbm1520(text, {
+    maxX: Math.round(media.across * spi) - 1,
+    maxY: Math.round(media.along * spi) - 1,
+  });
 }
 
 // Converts the corrected HP-GL for a plotter whose mode says output: "dmpl".
@@ -500,9 +522,10 @@ function onDownload() {
 
   let content = outputText();
   let fileName = base + "_FIX_" + mode + ".hpgl";
-  if (getMode().output === "dmpl") {
-    content = convertToDmpl(content).text;
-    fileName = base + "_FIX_" + mode + ".dmpl";
+  const fmt = OUTPUT_FORMATS[getMode().output];
+  if (fmt) {
+    content = fmt.convert(content).text;
+    fileName = base + "_FIX_" + mode + fmt.ext;
   }
 
   const blob = new Blob([content], { type: "text/plain" });

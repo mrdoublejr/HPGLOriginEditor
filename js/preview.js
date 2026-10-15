@@ -47,6 +47,9 @@ function parsePenPaths(text) {
 
 // Which way plotter +Y points on screen (−1 = right, +1 = left). Set by renderPreview
 // and used by the drag code below.
+// Inch values for labels: at most 2 decimals (some plot areas are exact unit counts, e.g. 3.77953 in).
+const inches = (v) => String(Math.round(v * 100) / 100);
+
 let lastYSign = -1;
 // Whether the last view was turned 90° clockwise (see the note at the top). Used by the drag code.
 let lastTurned = true;
@@ -98,11 +101,11 @@ function renderPreview(text, plotterKey, modeKey, mediaKey, targetBox,
   targetBox.style.minHeight = "0";
   // One-line summary, drawn inside the canvas (top strip) so no height is lost below it.
   const infoFull =
-    `${media.across} × ${media.along} in · ${Math.round(pageW)} × ${Math.round(pageH)} PU · ` +
+    `${inches(media.across)} × ${inches(media.along)} in · ${Math.round(pageW)} × ${Math.round(pageH)} PU · ` +
     `${describeOrigin(origin)} · margins ${margins.side}/${margins.lead}/${margins.trail}mm · ` +
     `plot ${Math.round(zoomLevel * 100)}%`;
   const infoShort =
-    `${media.across} × ${media.along} in · ${describeOrigin(origin)} · plot ${Math.round(zoomLevel * 100)}%`;
+    `${inches(media.across)} × ${inches(media.along)} in · ${describeOrigin(origin)} · plot ${Math.round(zoomLevel * 100)}%`;
 
   let availW = targetBox.clientWidth;
   let availH = targetBox.clientHeight - 2;
@@ -289,8 +292,8 @@ function renderPreview(text, plotterKey, modeKey, mediaKey, targetBox,
 
 // Draws the two dimension lines with arrowheads and labels around the page rectangle.
 function drawDimensions(ctx, page, media, turned) {
-  const lengthTag = `Length (Y)  ${media.along} in`;
-  const widthTag  = `Width (X)  ${media.across} in`;
+  const lengthTag = `Length (Y)  ${inches(media.along)} in`;
+  const widthTag  = `Width (X)  ${inches(media.across)} in`;
   const bottomTag = turned ? lengthTag : widthTag;    // horizontal side
   const sideTag   = turned ? widthTag  : lengthTag;   // vertical side
   const right = page.left + page.w, bottom = page.top + page.h;

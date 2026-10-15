@@ -24,6 +24,9 @@
 // CC/CA exist on this plotter but take a centre relative to the pen, so arcs,
 // circles and rectangles are sent as short line segments instead.
 //
+// Also: hpglToCbm1520(text, { maxX, maxY }) turns the same HP-GL into a Commodore
+// BASIC program for the Commodore 1520 printer plotter (see the end of this file).
+//
 // Public:  hpglToDmpl(text, { pens, stepsPerInch, maxX, maxY, textStyle,
 //                              preamble, clampPens })
 //   preamble:  extra commands sent right after ;: (e.g. "EF ")
@@ -392,6 +395,87 @@
 
     return { text: lines.join("\r\n") + "\r\n", segments, outOfRange };
   }
+
+  // ── Commodore 1520 writer ──
+  // The 1520 is not sent a command file: a BASIC program drives it through
+  // secondary addresses on device 6 (1520 User's Manual, pp. 20-28):
+  //   OPEN 1,6,1 then PRINT#1,"M",x,y  move (pen up) to absolute x,y
+  //                   PRINT#1,"D",x,y  draw (pen down) to absolute x,y
+  //                   PRINT#1,"H"      home (0,0)
+  //   OPEN 2,6,2 then PRINT#2,n        pen colour 0 black, 1 blue, 2 green, 3 red
+  // Steps are 0.2 mm (manual p. 16), so 1 HP-GL unit (0.025 mm) = 1/8 step.
+  // HP-GL pen n becomes colour (n-1) mod 4; SP0 is ignored.
+  // The drawing is kept as DATA lines read by a short loop, with each line under
+  // 80 characters so it can be typed in on a C64.
+  function emitCbm1520(ops, opt, warn) {
+    const fx = v => Math.round(v * 0.025 / 0.2);
+    const data = [];                      // DATA items as strings
+    let last = null, pending = null, colour = null, outOfRange = false, segments = 0;
+    const check = (x, y) => { if (x < 0 || y < -opt.maxY || x > opt.maxX || y > opt.maxY) outOfRange = true; };
+    function flushMove() {
+      if (!pending) return;
+      if (!(last && last.x === pending.x && last.y === pending.y)) {
+        data.push("M", String(pending.x), String(pending.y));
+        check(pending.x, pending.y);
+        last = pending;
+      }
+      pending = null;
+    }
+    for (const op of ops) {
+      if (op.t === "pen") {
+        if (op.n === 0) continue;
+        const c = (op.n - 1) % 4;
+        if (c !== colour) { data.push("C", String(c)); colour = c; }
+        continue;
+      }
+      if (op.t === "label") { warn("cbm-lb", "LB labels were skipped; the 1520 prints text through a separate channel."); continue; }
+      const x = fx(op.x), y = fx(op.y);
+      if (op.t === "move") pending = { x, y };
+      else if (op.t === "draw") {
+        flushMove();
+        if (!(last && last.x === x && last.y === y)) {
+          data.push("D", String(x), String(y));
+          check(x, y);
+          segments++;
+        }
+        last = { x, y };
+      }
+    }
+    data.push("E");
+    if (outOfRange) warn("oob", `Some points fall outside the 1520's 0–${opt.maxX} × 0–${opt.maxY} step area; it lifts the pen past the edge.`);
+
+    const lines = [
+      "10 REM PLOT FOR COMMODORE 1520 (DEVICE 6)",
+      "20 OPEN1,6,1:OPEN2,6,2:PRINT#1,\"H\"",
+      "30 READ C$:IF C$=\"E\" THEN 70",
+      "40 IF C$=\"C\" THEN READ N:PRINT#2,N:GOTO 30",
+      "50 READ X,Y:PRINT#1,C$,X,Y:GOTO 30",
+      "70 PRINT#1,\"H\":PRINT#2,0:CLOSE2:CLOSE1:END",
+    ];
+    let n = 100, cur = "";
+    for (const item of data) {
+      const add = cur ? "," + item : item;
+      if ((String(n) + " DATA " + cur + add).length > 78 && cur) {
+        lines.push(`${n} DATA ${cur}`); n += 10; cur = item;
+      } else cur += add;
+    }
+    if (cur) lines.push(`${n} DATA ${cur}`);
+    if (n > 63999) warn("cbm-lines", "The program needs more line numbers than BASIC allows (63999); the plot is too detailed for the 1520.");
+    const text = lines.join("\r\n") + "\r\n";
+    if (text.length > 38000) warn("cbm-c64", `The program is about ${Math.round(text.length / 1024)} KB, likely too big for a C64's 38 KB of BASIC memory.`);
+    else if (text.length > 3500) warn("cbm-vic", `The program is about ${Math.round(text.length / 1024)} KB; it won't fit an unexpanded VIC-20 (3.5 KB).`);
+    return { text, segments, outOfRange };
+  }
+
+  window.hpglToCbm1520 = function (text, options) {
+    const opt = Object.assign({ maxX: 479, maxY: 998, pens: 99, clampPens: false, labels: true }, options || {});
+    const warnings = new Map();
+    const warn = (k, m) => { if (!warnings.has(k)) warnings.set(k, m); };
+    const ops = interpret(tokenize(text), opt, warn);
+    const res = emitCbm1520(ops, opt, warn);
+    if (!res.segments) warn("empty", "No drawing commands were found.");
+    return { text: res.text, warnings: [...warnings.values()], segments: res.segments, outOfRange: res.outOfRange };
+  };
 
   window.hpglToDmpl = function (text, options) {
     const opt = Object.assign({ pens: 6, stepsPerInch: 200, maxX: 1850, maxY: 1400, labels: true,
