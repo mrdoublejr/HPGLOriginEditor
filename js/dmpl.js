@@ -1,6 +1,7 @@
 // ── dmpl.js ───────────────────────────────────────────────────────
 // Turns the corrected HP-GL into DM/PL for Houston Instrument DM/PL plotters:
-// the TRS-80 Multi-Pen Plotter (26-1191) and the HiPlot DMP-3, 4, 6 and 7.
+// the TRS-80 Multi-Pen Plotter (26-1191), the HiPlot DMP-3, 4, 6 and 7, and the
+// single-pen HiPlot DMP-41 and 42.
 //
 // The corrector does all the positioning in HP-GL plotter units (bottom-left
 // origin, the DM/PL home position). This file only translates the finished HP-GL:
@@ -13,6 +14,9 @@
 //   U / D  pen up / down    x,y  move to coordinate   Pn  new pen (0-6; P0 = stow pen)
 //   S text_  character plotting   @  deselect
 // Neither the 26-1191 nor the DMP-3..9 has the EC command; they work in 0.005 in steps.
+// The DMP-41/42 default to 0.005 in too (DMP-41/42 operation manual), so no EC is sent.
+// For the DMP-41/42, the chart format (EH small / EF large) is sent first via the
+// "preamble" option, matching the paper size chosen in the corrector.
 //
 // Text height codes differ (textStyle option):
 //   "trs80": Srh  with h a single digit 1-9           (26-1191 owner's manual, Table 7)
@@ -20,7 +24,10 @@
 // CC/CA exist on this plotter but take a centre relative to the pen, so arcs,
 // circles and rectangles are sent as short line segments instead.
 //
-// Public:  hpglToDmpl(text, { pens, stepsPerInch, maxX, maxY, textStyle })
+// Public:  hpglToDmpl(text, { pens, stepsPerInch, maxX, maxY, textStyle,
+//                              preamble, clampPens })
+//   preamble:  extra commands sent right after ;: (e.g. "EF ")
+//   clampPens: false keeps every pen number (single-pen plotters with pen pause)
 //          → { text, warnings: [..], segments, outOfRange }
 
 (function () {
@@ -186,7 +193,7 @@
 
         case "SP": {
           let n = Math.trunc(a[0] ?? 0);
-          if (n > opt.pens) { warn("pen-" + n, `SP${n} is beyond the ${opt.pens} pens available; pen ${opt.pens} was used.`); n = opt.pens; }
+          if (opt.clampPens !== false && n > opt.pens) { warn("pen-" + n, `SP${n} is beyond the ${opt.pens} pens available; pen ${opt.pens} was used.`); n = opt.pens; }
           if (n < 0) n = 0;
           target.push({ t: "pen", n });
           break;
@@ -314,7 +321,7 @@
 
     // Leading space: the manual advises sending a character before the first ;:
     // after power-on or RESET.
-    const toks = [" ;:H A "];
+    const toks = [" ;:" + (opt.preamble || "") + "H A "];
     let state = null, last = null, pen = null, pending = null;
     let segments = 0, outOfRange = false;
     const check = (x, y) => {
@@ -388,6 +395,7 @@
 
   window.hpglToDmpl = function (text, options) {
     const opt = Object.assign({ pens: 6, stepsPerInch: 200, maxX: 1850, maxY: 1400, labels: true,
+                                preamble: "", clampPens: true,
                                 textStyle: "trs80" }, options || {});
     const warnings = new Map();
     const warn = (k, m) => { if (!warnings.has(k)) warnings.set(k, m); };

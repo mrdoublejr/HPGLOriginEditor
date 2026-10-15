@@ -187,5 +187,54 @@
       "Plot area (15 × 10 in, per manual)": { "across": 15, "along": 10 }
     },
     "defaultMedia": "Plot area (15 × 10 in, per manual)"
+  },
+
+  "hi_dmp41": {
+    "name": "Houston Instrument HiPlot DMP-41",
+    "unitsPerMM": 40,
+    "pens": 1,
+    "defaultMode": "dmpl",
+    "margins": { "side": 0, "lead": 0, "trail": 0 },
+    "modes": {
+      "dmpl": {
+        "label": "DM/PL (bottom-left origin, 0.005 in steps)",
+        "origin": "bottom-left",
+        "allowNegative": false,
+        "output": "dmpl",
+        "stepsPerInch": 200,
+        "textStyle": "dmpl",
+        "penPause": true
+      }
+    },
+    "media": {
+      "C 17 × 22 in · small chart (plot 20 × 15 in)": { "across": 20, "along": 15, "chart": "EH" },
+      "D 22 × 34 in · large chart (plot 32 × 20 in)": { "across": 32, "along": 20, "chart": "EF" }
+    },
+    "defaultMedia": "D 22 × 34 in · large chart (plot 32 × 20 in)"
+  },
+
+  "hi_dmp42": {
+    "name": "Houston Instrument HiPlot DMP-42",
+    "unitsPerMM": 40,
+    "pens": 1,
+    "defaultMode": "dmpl",
+    "margins": { "side": 0, "lead": 0, "trail": 0 },
+    "modes": {
+      "dmpl": {
+        "label": "DM/PL (bottom-left origin, 0.005 in steps)",
+        "origin": "bottom-left",
+        "allowNegative": false,
+        "output": "dmpl",
+        "stepsPerInch": 200,
+        "textStyle": "dmpl",
+        "penPause": true
+      }
+    },
+    "media": {
+      "A2 · small chart (plot 21.5 × 14.5 in)": { "across": 21.5, "along": 14.5, "chart": "EH" },
+      "A1 · large chart (plot 31 × 21.5 in)": { "across": 31, "along": 21.5, "chart": "EF" },
+      "24 × 36 in · large chart (plot 34 × 21.5 in)": { "across": 34, "along": 21.5, "chart": "EF" }
+    },
+    "defaultMedia": "A1 · large chart (plot 31 × 21.5 in)"
   }
 }

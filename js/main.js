@@ -378,6 +378,9 @@ function updatePlotterInfo() {
     `${mode.allowNegative ? "negatives allowed" : "no negatives"} · ` +
     `margin ${p.margins.side}/${p.margins.lead}mm`;
   if (mode.output === "dmpl") plotterInfo.textContent += " · output DM/PL";
+  // Single-pen DM/PL plotters (DMP-41/42) ignore pen changes unless Pen Pause is
+  // turned on at the control panel; then they stop for a manual pen swap.
+  if (mode.penPause) plotterInfo.textContent += " · colour changes need Pen Pause on";
   btnDownload.textContent = (mode.output === "dmpl") ? "Download DM/PL" : "Download HPGL";
 }
 
@@ -394,6 +397,8 @@ function convertToDmpl(text) {
     maxX: Math.round(media.across * spi),
     maxY: Math.round(media.along * spi),
     textStyle: mode.textStyle || "trs80",
+    preamble: media.chart ? media.chart + " " : "",   // e.g. "EF" (large chart) for the DMP-41/42
+    clampPens: !mode.penPause,
   });
 }
 
