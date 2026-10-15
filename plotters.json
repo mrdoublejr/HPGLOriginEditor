@@ -48,6 +48,26 @@
     "defaultMedia": "A (8.5 × 11 in)"
   },
 
+  "hp7470a": {
+    "name": "HP 7470A",
+    "unitsPerMM": 40,
+    "pens": 2,
+    "defaultMode": "hpgl",
+    "margins": { "side": 0, "lead": 0, "trail": 0 },
+    "modes": {
+      "hpgl": {
+        "label": "HP-GL (bottom-left origin, negatives OK)",
+        "origin": "bottom-left",
+        "allowNegative": true
+      }
+    },
+    "media": {
+      "US switch · A 8.5 × 11 in (plot 10.14 × 7.53 in)": { "across": 10.1378, "along": 7.52953 },
+      "A4 switch · A4 210 × 297 mm (plot 10.73 × 7.53 in)": { "across": 10.72835, "along": 7.52953 }
+    },
+    "defaultMedia": "US switch · A 8.5 × 11 in (plot 10.14 × 7.53 in)"
+  },
+
   "designjet750": {
     "name": "HP DesignJet 750C",
     "unitsPerMM": 40,
