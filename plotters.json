@@ -81,6 +81,28 @@
     "defaultMedia": "D (22 × 34 in)"
   },
 
+  "rolanddxy880": {
+    "name": "Roland DXY-880",
+    "unitsPerMM": 40,
+    "pens": 8,
+    "defaultMode": "rdgl",
+    "margins": { "side": 0, "lead": 0, "trail": 0 },
+    "modes": {
+      "rdgl": {
+        "label": "RD-GL (bottom-left origin, no negatives; DIP SW1-9 on)",
+        "origin": "bottom-left",
+        "allowNegative": false
+      }
+    },
+    "media": {
+      "A3 (plot 380 × 270 mm)":       { "across": 14.96063, "along": 10.62992 },
+      "A4 (plot 270 × 192 mm)":       { "across": 10.62992, "along": 7.55906 },
+      "B 11 × 17 in (plot 14.96 × 10.16 in)": { "across": 14.96063, "along": 10.15748 },
+      "A 8.5 × 11 in (plot 10.16 × 7.80 in)": { "across": 10.15748, "along": 7.79528 }
+    },
+    "defaultMedia": "A3 (plot 380 × 270 mm)"
+  },
+
   "trs80_261191": {
     "name": "TRS-80 Multi-Pen Plotter (26-1191)",
     "unitsPerMM": 40,
