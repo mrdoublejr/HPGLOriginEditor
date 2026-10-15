@@ -410,4 +410,5 @@ function onDragEnd() {
   if (!dragState) return;
   dragState = null;
   previewCorrected.classList.remove("dragging");
+  if (typeof refreshStatus === "function") refreshStatus();   // status describes the new position
 }

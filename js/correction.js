@@ -1,7 +1,10 @@
 // ── correction.js ─────────────────────────────────────────────────
 // Transforms raw HPGL coordinates for a specific plotter's origin and page.
 
-function correctHPGL(text, plotterKey, modeKey, mediaKey, rotateDeg) {
+// noClamp: when true, points below 0 are left as they are even in a
+// "no negatives" mode; the caller clamps later, after Size and drag offset
+// (see outputText() in main.js), so shrinking or moving a plot unclamps it.
+function correctHPGL(text, plotterKey, modeKey, mediaKey, rotateDeg, noClamp) {
   const p = PLOTTERS[plotterKey];
   const mode = p.modes[modeKey];
   const media = p.media[mediaKey];
@@ -70,7 +73,7 @@ function correctHPGL(text, plotterKey, modeKey, mediaKey, rotateDeg) {
     const [x, y] = parsed[i++];
     let [nx, ny] = transform(x, y);
 
-    if (!mode.allowNegative) {
+    if (!mode.allowNegative && !noClamp) {
       if (nx < 0) { nx = 0; negativeClamped++; }
       if (ny < 0) { ny = 0; negativeClamped++; }
     }

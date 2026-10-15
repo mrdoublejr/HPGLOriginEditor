@@ -11,6 +11,9 @@ let flipH = false, flipV = false;
 // Consent checkbox — controls whether the file gets uploaded to R2.
 let uploadConsent = null;
 
+// How many coordinates the last output clamped to 0 (shown in the status line).
+let lastNegativeClamped = 0;
+
 function boot() {
   try {
     loadingMessage.style.display = "none";
@@ -104,6 +107,7 @@ function wireEvents() {
       correctedText = applyManualOffset(correctedBaseText);
       renderPreview(correctedText, plotterSelect.value, hpglVersion.value,
                     mediaSelect.value, previewCorrected, true);
+      refreshStatus();
     }
   });
 
@@ -148,6 +152,7 @@ function wireEvents() {
         zoomRenderScheduled = false;
         renderPreview(correctedText, plotterSelect.value, hpglVersion.value,
                       mediaSelect.value, previewCorrected, true);
+        refreshStatus();
       });
     }
   }, { passive: false });
@@ -239,8 +244,10 @@ function runCorrection() {
     const modeKey    = hpglVersion.value;
     const mediaKey   = mediaSelect.value;
 
+    // Clamping to 0 for "no negatives" modes happens at output time, after
+    // Size and drag offset, so it reflects what will actually be downloaded.
     const result = correctHPGL(currentText, plotterKey, modeKey, mediaKey,
-                               rotationDeg);
+                               rotationDeg, true);
     correctedBaseText = (flipH || flipV)
       ? flipHPGL(result.text, flipH, flipV)
       : result.text;
@@ -252,35 +259,95 @@ function runCorrection() {
     previewCorrected.classList.add("draggable");
     btnDownload.disabled = false;
 
-    const bbox = getBBox(correctedText);
-    let msg = `X ${bbox.minX}→${bbox.maxX}  Y ${bbox.minY}→${bbox.maxY}`;
-    if (result.negativeClamped > 0) {
-      msg += ` · ${result.negativeClamped} clamped to 0 (${getMode().output === "dmpl" ? "DM/PL" : "HP-GL/2"})`;
-      statusEl.classList.add("warn");
-    }
-    if ((flipH || flipV) && FLIP_UNSUPPORTED.test(correctedBaseText)) {
-      msg += " · arcs/circles/other shapes not flipped";
-      statusEl.classList.add("warn");
-    }
-
-    // DM/PL plotters: convert now so any problems show before downloading.
-    statusEl.title = "";
-    if (getMode().output === "dmpl") {
-      const dm = convertToDmpl(correctedText);
-      msg += ` · DM/PL ${dm.text.length} bytes`;
-      if (dm.warnings.length) {
-        msg += ` · ${dm.warnings.length} DM/PL note${dm.warnings.length !== 1 ? "s" : ""} (hover)`;
-        statusEl.title = dm.warnings.join("\n");
-        statusEl.classList.add("warn");
-      }
-    }
-    statusEl.textContent = msg;
+    refreshStatus();
   } catch (err) {
     statusEl.textContent = "Error: " + err.message;
     correctedText = null;
     correctedBaseText = null;
     btnDownload.disabled = true;
   }
+}
+
+// ── What gets downloaded ────────────────────────────────────────
+// The preview draws correctedText at the Size (zoom) setting, scaled about the
+// plotter origin. The downloaded file is scaled the same way, so it matches the
+// preview exactly. At 100% the file is correctedText unchanged.
+function outputText() {
+  if (!correctedText) return null;
+  let out = applyZoom(correctedText, zoomLevel);
+  lastNegativeClamped = 0;
+  if (!getMode().allowNegative) {
+    // Same rule the correction used to apply: any coordinate below 0 becomes 0.
+    out = out.replace(/-?\d+[,\s]+-?\d+/g, (m) => {
+      let [x, y] = m.split(/[,\s]+/).map(Number);
+      if (x < 0) { x = 0; lastNegativeClamped++; }
+      if (y < 0) { y = 0; lastNegativeClamped++; }
+      return `${x},${y}`;
+    });
+  }
+  return out;
+}
+
+// Scales HP-GL about the plotter origin (0,0). Coordinate pairs are scaled;
+// a CI radius is scaled; arc angles (the odd number after an AA/AR pair) and
+// label text are left alone.
+function applyZoom(text, z) {
+  if (!text || Math.abs(z - 1) < 1e-9) return text;
+  const fmt = (v) => String(Math.round(v * z));
+  return text.replace(/(LB[^\x03]*\x03?)|([A-Za-z]{2})([^A-Za-z;\x03]*)/g,
+    (m, label, op, args) => {
+      if (label) return label;                          // label text: untouched
+      const up = op.toUpperCase();
+      if (up === "CI") {                                // radius [,chord]
+        return op + args.replace(/-?\d+(?:\.\d+)?/, (r) => fmt(parseFloat(r)));
+      }
+      if (up === "SI" || up === "SR" || up === "DI" || up === "DR" ||
+          up === "SP" || up === "LT" || up === "VS" || up === "CT") {
+        return m;                                       // not coordinates
+      }
+      // Scale numbers two at a time (x,y); a lone trailing number (arc angle,
+      // chord) is left as it is.
+      const nums = args.match(/-?\d+(?:\.\d+)?/g);
+      if (!nums || nums.length < 2) return m;
+      let k = 0;
+      const pairCount = Math.floor(nums.length / 2) * 2;
+      return op + args.replace(/-?\d+(?:\.\d+)?/g, (n) =>
+        (k++ < pairCount) ? fmt(parseFloat(n)) : n);
+    });
+}
+
+// Status line under the corrected preview. Describes the file that the
+// Download button will save (Size and drag offset included).
+function refreshStatus() {
+  const out = outputText();
+  if (!out) return;
+  statusEl.classList.remove("warn");
+  statusEl.title = "";
+
+  const bbox = getBBox(out);
+  let msg = bbox
+    ? `X ${bbox.minX}→${bbox.maxX}  Y ${bbox.minY}→${bbox.maxY}`
+    : "No coordinates";
+  if (lastNegativeClamped > 0) {
+    msg += ` · ${lastNegativeClamped} clamped to 0 (${getMode().output === "dmpl" ? "DM/PL" : "HP-GL/2"})`;
+    statusEl.classList.add("warn");
+  }
+  if ((flipH || flipV) && FLIP_UNSUPPORTED.test(correctedBaseText)) {
+    msg += " · arcs/circles/other shapes not flipped";
+    statusEl.classList.add("warn");
+  }
+
+  // DM/PL plotters: convert now so any problems show before downloading.
+  if (getMode().output === "dmpl") {
+    const dm = convertToDmpl(out);
+    msg += ` · DM/PL ${dm.text.length} bytes`;
+    if (dm.warnings.length) {
+      msg += ` · ${dm.warnings.length} DM/PL note${dm.warnings.length !== 1 ? "s" : ""} (hover)`;
+      statusEl.title = dm.warnings.join("\n");
+      statusEl.classList.add("warn");
+    }
+  }
+  statusEl.textContent = msg;
 }
 
 function populateForPlotter(plotterKey) {
@@ -416,6 +483,7 @@ function setZoom(z) {
   if (correctedText) {
     renderPreview(correctedText, plotterSelect.value, hpglVersion.value,
                   mediaSelect.value, previewCorrected, true);
+    refreshStatus();
   }
 }
 
@@ -424,10 +492,10 @@ function onDownload() {
   const base = currentFile.name.replace(/\.[^.]+$/, "");
   const mode = hpglVersion.value;
 
-  let content = correctedText;
+  let content = outputText();
   let fileName = base + "_FIX_" + mode + ".hpgl";
   if (getMode().output === "dmpl") {
-    content = convertToDmpl(correctedText).text;
+    content = convertToDmpl(content).text;
     fileName = base + "_FIX_" + mode + ".dmpl";
   }
 
