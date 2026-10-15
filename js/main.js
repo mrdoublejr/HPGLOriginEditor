@@ -255,12 +255,24 @@ function runCorrection() {
     const bbox = getBBox(correctedText);
     let msg = `X ${bbox.minX}→${bbox.maxX}  Y ${bbox.minY}→${bbox.maxY}`;
     if (result.negativeClamped > 0) {
-      msg += ` · ${result.negativeClamped} clamped to 0 (HP-GL/2)`;
+      msg += ` · ${result.negativeClamped} clamped to 0 (${getMode().output === "dmpl" ? "DM/PL" : "HP-GL/2"})`;
       statusEl.classList.add("warn");
     }
     if ((flipH || flipV) && FLIP_UNSUPPORTED.test(correctedBaseText)) {
       msg += " · arcs/circles/other shapes not flipped";
       statusEl.classList.add("warn");
+    }
+
+    // DM/PL plotters: convert now so any problems show before downloading.
+    statusEl.title = "";
+    if (getMode().output === "dmpl") {
+      const dm = convertToDmpl(correctedText);
+      msg += ` · DM/PL ${dm.text.length} bytes`;
+      if (dm.warnings.length) {
+        msg += ` · ${dm.warnings.length} DM/PL note${dm.warnings.length !== 1 ? "s" : ""} (hover)`;
+        statusEl.title = dm.warnings.join("\n");
+        statusEl.classList.add("warn");
+      }
     }
     statusEl.textContent = msg;
   } catch (err) {
@@ -298,6 +310,23 @@ function updatePlotterInfo() {
     `${p.pens} pen${p.pens !== 1 ? 's' : ''} · ${describeOrigin(mode.origin)} · ` +
     `${mode.allowNegative ? "negatives allowed" : "no negatives"} · ` +
     `margin ${p.margins.side}/${p.margins.lead}mm`;
+  if (mode.output === "dmpl") plotterInfo.textContent += " · output DM/PL";
+  btnDownload.textContent = (mode.output === "dmpl") ? "Download DM/PL" : "Download HPGL";
+}
+
+// Converts the corrected HP-GL for a plotter whose mode says output: "dmpl".
+// The plotter's step range comes from the selected media (plot area) size.
+function convertToDmpl(text) {
+  const p = PLOTTERS[plotterSelect.value];
+  const mode = getMode();
+  const media = p.media[mediaSelect.value];
+  const spi = mode.stepsPerInch || 200;
+  return hpglToDmpl(text, {
+    pens: p.pens,
+    stepsPerInch: spi,
+    maxX: Math.round(media.across * spi),
+    maxY: Math.round(media.along * spi),
+  });
 }
 
 function resetManualOffset() {
@@ -392,12 +421,20 @@ function setZoom(z) {
 
 function onDownload() {
   if (!correctedText) return;
-  const blob = new Blob([correctedText], { type: "text/plain" });
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
   const base = currentFile.name.replace(/\.[^.]+$/, "");
   const mode = hpglVersion.value;
-  a.download = base + "_FIX_" + mode + ".hpgl";
+
+  let content = correctedText;
+  let fileName = base + "_FIX_" + mode + ".hpgl";
+  if (getMode().output === "dmpl") {
+    content = convertToDmpl(correctedText).text;
+    fileName = base + "_FIX_" + mode + ".dmpl";
+  }
+
+  const blob = new Blob([content], { type: "text/plain" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = fileName;
   a.click();
   URL.revokeObjectURL(a.href);
 }

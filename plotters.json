@@ -79,5 +79,26 @@
       "E (34 × 44 in)":      { "across": 34,    "along": 44 }
     },
     "defaultMedia": "D (22 × 34 in)"
+  },
+
+  "trs80_261191": {
+    "name": "TRS-80 Multi-Pen Plotter (26-1191)",
+    "unitsPerMM": 40,
+    "pens": 6,
+    "defaultMode": "dmpl",
+    "margins": { "side": 0, "lead": 0, "trail": 0 },
+    "modes": {
+      "dmpl": {
+        "label": "DM/PL (bottom-left origin, 0.005 in steps)",
+        "origin": "bottom-left",
+        "allowNegative": false,
+        "output": "dmpl",
+        "stepsPerInch": 200
+      }
+    },
+    "media": {
+      "Plot area (9¼ × 7 in)": { "across": 9.25, "along": 7 }
+    },
+    "defaultMedia": "Plot area (9¼ × 7 in)"
   }
 }

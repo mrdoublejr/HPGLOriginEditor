@@ -1,0 +1,384 @@
+// ── dmpl.js ───────────────────────────────────────────────────────
+// Turns the corrected HP-GL into DM/PL for the TRS-80 Multi-Pen Plotter (26-1191).
+//
+// The corrector does all the positioning in HP-GL plotter units (bottom-left
+// origin for this plotter). This file only translates the finished HP-GL:
+//   1 HP-GL unit = 0.025 mm (1016 per inch)  →  1 plotter step = 0.005 in (200 per inch)
+//
+// Commands sent, all from the 26-1191 owner's manual (Using the Plotter / Appendix C):
+//   ;:  plotter select      H  home (lower left)     A  absolute positioning
+//   U / D  pen up / down    x,y  move to coordinate   Pn  new pen (0-6; P0 = stow pen)
+//   Srh text_  character plotting (r = rotation 1-4, h = height 1-9)   @  deselect
+// The 26-1191 has no EC command; it always works in 0.005 in steps.
+// CC/CA exist on this plotter but take a centre relative to the pen, so arcs,
+// circles and rectangles are sent as short line segments instead.
+//
+// Public:  hpglToDmpl(text, { pens, stepsPerInch, maxX, maxY })
+//          → { text, warnings: [..], segments, outOfRange }
+
+(function () {
+  "use strict";
+
+  const HPGL_UNIT_MM = 0.025;           // one HP-GL plotter unit
+  const LABEL_TERM_DEFAULT = "\x03";    // ETX
+  // HP-GL default character size in cm when SI is not given (assumed: 0.19 wide x 0.27 high)
+  const SI_DEFAULT_W = 0.19, SI_DEFAULT_H = 0.27;
+
+  // Character height codes 1-9 and their heights in inches (26-1191 owner's manual, Table 7)
+  const TEXT_CODES = ["1", "2", "3", "4", "5", "6", "7", "8", "9"];
+  const TEXT_SIZES_IN = [0.07, 0.105, 0.14, 0.21, 0.28, 0.42, 0.56, 0.85, 1.12];
+
+  // ---------------------------------------------------------------- tokenizer
+  function tokenize(src) {
+    const out = [];
+    const n = src.length;
+    let i = 0;
+    let labelTerm = LABEL_TERM_DEFAULT;
+    const isLetter = c => (c >= "A" && c <= "Z") || (c >= "a" && c <= "z");
+
+    while (i < n) {
+      const c = src[i];
+
+      // HP RS-232 device-control sequences: ESC . <letter> [params] [:]
+      if (c === "\x1b") {
+        i++;
+        if (src[i] === ".") {
+          i += 2;
+          const m = /^[0-9;]*:/.exec(src.slice(i, i + 80));
+          if (m) i += m[0].length;
+        }
+        continue;
+      }
+
+      if (!isLetter(c) || i + 1 >= n || !isLetter(src[i + 1])) { i++; continue; }
+
+      const cmd = (c + src[i + 1]).toUpperCase();
+      i += 2;
+
+      if (cmd === "LB") {
+        const end = src.indexOf(labelTerm, i);
+        const stop = end === -1 ? n : end;
+        out.push({ cmd, text: src.slice(i, stop) });
+        i = stop + 1;
+        continue;
+      }
+
+      if (cmd === "DT") {
+        // The character right after DT becomes the label terminator; "DT;" restores ETX.
+        if (i < n && src[i] !== ";") { labelTerm = src[i]; i++; }
+        else labelTerm = LABEL_TERM_DEFAULT;
+        out.push({ cmd, args: [] });
+        continue;
+      }
+
+      if (cmd === "CO") {
+        // Comment: skip a quoted string if present
+        let j = i;
+        while (j < n && /\s/.test(src[j])) j++;
+        if (src[j] === '"') {
+          const end = src.indexOf('"', j + 1);
+          i = end === -1 ? n : end + 1;
+        }
+        continue;
+      }
+
+      if (cmd === "PE") {
+        const end = src.indexOf(";", i);
+        i = end === -1 ? n : end + 1;
+        out.push({ cmd, args: [] });
+        continue;
+      }
+
+      let j = i;
+      while (j < n && /[0-9+\-.,\s]/.test(src[j])) j++;
+      const args = src.slice(i, j).split(/[\s,]+/)
+        .filter(s => s.length).map(Number).filter(Number.isFinite);
+      out.push({ cmd, args });
+      i = j;
+    }
+    return out;
+  }
+
+  // ---------------------------------------------------------------- HPGL interpreter
+  // Produces a list of ops in HP-GL plotter units:
+  //   {t:"move"|"draw", x, y}   {t:"pen", n}   {t:"label", x, y, text, h}
+  function interpret(tokens, opt, warn) {
+    const ops = [{ t: "move", x: 0, y: 0 }];
+    let target = ops;
+    let poly = null, polyStart = null, polyNeedStart = false;
+
+    let abs = true, down = false;
+    let px = 0, py = 0;                 // current position, plotter units
+    let ip = null, sc = null;
+    let siW = SI_DEFAULT_W, siH = SI_DEFAULT_H;
+    const chordDefault = 5;
+
+    const scaling = () => sc !== null && ip !== null;
+    const toPlot = (ux, uy) => scaling()
+      ? [ip[0] + (ux - sc[0]) * (ip[2] - ip[0]) / (sc[1] - sc[0]),
+         ip[1] + (uy - sc[2]) * (ip[3] - ip[1]) / (sc[3] - sc[2])]
+      : [ux, uy];
+    const toUser = (x, y) => scaling()
+      ? [sc[0] + (x - ip[0]) * (sc[1] - sc[0]) / (ip[2] - ip[0]),
+         sc[2] + (y - ip[1]) * (sc[3] - sc[2]) / (ip[3] - ip[1])]
+      : [x, y];
+
+    function push(t, x, y) {
+      if (target === poly && polyNeedStart) { polyStart = [x, y]; polyNeedStart = false; }
+      target.push({ t, x, y });
+      px = x; py = y;
+    }
+    const goUser = (ux, uy, drawIt) => { const [x, y] = toPlot(ux, uy); push(drawIt ? "draw" : "move", x, y); };
+
+    function moveList(args) {
+      if (args.length % 2) warn("odd", "A pen move had an odd number of coordinates; the last one was ignored.");
+      for (let k = 0; k + 1 < args.length; k += 2) {
+        let ux = args[k], uy = args[k + 1];
+        if (!abs) { const [cx, cy] = toUser(px, py); ux += cx; uy += cy; }
+        goUser(ux, uy, down);
+      }
+    }
+
+    const chordOf = v => (v === undefined ? chordDefault : Math.min(45, Math.max(0.5, Math.abs(v))));
+
+    function arcPoints(cx, cy, r, a0, sweep, chord) {
+      const steps = Math.max(1, Math.ceil(Math.abs(sweep) / chord));
+      const pts = [];
+      for (let k = 1; k <= steps; k++) {
+        const a = (a0 + sweep * k / steps) * Math.PI / 180;
+        pts.push([cx + r * Math.cos(a), cy + r * Math.sin(a)]);
+      }
+      return pts;
+    }
+
+    function rectangle(args, relative, filled, cmd) {
+      if (args.length < 2) return;
+      const [x0, y0] = toUser(px, py);
+      const x1 = relative ? x0 + args[0] : args[0];
+      const y1 = relative ? y0 + args[1] : args[1];
+      goUser(x1, y0, true); goUser(x1, y1, true); goUser(x0, y1, true); goUser(x0, y0, true);
+      if (filled) warn("fill-" + cmd, `${cmd} (filled rectangle) was drawn as an outline only.`);
+    }
+
+    for (const tk of tokens) {
+      const a = tk.args || [];
+      switch (tk.cmd) {
+        case "IN": abs = true; down = false; sc = null; ip = null; siW = SI_DEFAULT_W; siH = SI_DEFAULT_H; break;
+        case "DF": abs = true; sc = null; siW = SI_DEFAULT_W; siH = SI_DEFAULT_H; break;
+        case "PA": abs = true; moveList(a); break;
+        case "PR": abs = false; moveList(a); break;
+        case "PU": down = false; moveList(a); break;
+        case "PD": down = true; moveList(a); break;
+
+        case "SP": {
+          let n = Math.trunc(a[0] ?? 0);
+          if (n > opt.pens) { warn("pen-" + n, `SP${n} is beyond the ${opt.pens} pens available; pen ${opt.pens} was used.`); n = opt.pens; }
+          if (n < 0) n = 0;
+          target.push({ t: "pen", n });
+          break;
+        }
+
+        case "IP":
+          if (a.length >= 4) ip = a.slice(0, 4);
+          else { ip = null; if (sc) warn("ip-default", "IP without parameters resets P1/P2 to the source plotter's defaults, which this converter can't know; scaling was turned off."); }
+          break;
+
+        case "SC":
+          if (a.length === 0) sc = null;
+          else if (a.length >= 4) {
+            sc = a.slice(0, 4);
+            if (a.length > 4 && a[4] !== 0) warn("sc-iso", "Isotropic SC scaling isn't supported; it was treated as anisotropic.");
+            if (sc[1] === sc[0] || sc[3] === sc[2]) { sc = null; warn("sc-bad", "An SC command had a zero-size range and was ignored."); }
+            if (!ip) warn("sc-noip", "SC was used without an IP command. The source plotter's default P1/P2 aren't known, so user units were treated as plotter units. Output scale may be wrong.");
+          }
+          break;
+
+        case "CI": {
+          if (!a.length) break;
+          const r = Math.abs(a[0]);
+          const start = a[0] < 0 ? 180 : 0;
+          const [cx, cy] = toUser(px, py);
+          goUser(cx + r * Math.cos(start * Math.PI / 180), cy, false);
+          for (const [x, y] of arcPoints(cx, cy, r, start, 360, chordOf(a[1]))) goUser(x, y, true);
+          goUser(cx, cy, false);
+          break;
+        }
+
+        case "AA":
+        case "AR": {
+          if (a.length < 3) break;
+          const [ux, uy] = toUser(px, py);
+          const cx = tk.cmd === "AA" ? a[0] : ux + a[0];
+          const cy = tk.cmd === "AA" ? a[1] : uy + a[1];
+          const r = Math.hypot(ux - cx, uy - cy);
+          if (r === 0) break;
+          const a0 = Math.atan2(uy - cy, ux - cx) * 180 / Math.PI;
+          for (const [x, y] of arcPoints(cx, cy, r, a0, a[2], chordOf(a[3]))) goUser(x, y, down);
+          break;
+        }
+
+        case "EA": rectangle(a, false, false, "EA"); break;
+        case "ER": rectangle(a, true, false, "ER"); break;
+        case "RA": rectangle(a, false, true, "RA"); break;
+        case "RR": rectangle(a, true, true, "RR"); break;
+
+        case "PM": {
+          const m = a[0] ?? 0;
+          if (m === 0) {
+            poly = [{ t: "move", x: px, y: py }];
+            polyStart = [px, py]; polyNeedStart = false;
+            target = poly;
+          } else if (poly && (m === 1 || m === 2)) {
+            if (polyStart) poly.push({ t: "draw", x: polyStart[0], y: polyStart[1] });
+            polyNeedStart = true;
+            if (m === 2) target = ops;
+          }
+          break;
+        }
+
+        case "EP":
+        case "FP":
+          if (poly) {
+            const sx = px, sy = py;
+            for (const op of poly) ops.push({ ...op });
+            ops.push({ t: "move", x: sx, y: sy });
+          }
+          if (tk.cmd === "FP") warn("fp", "FP (fill polygon) was drawn as an outline only.");
+          break;
+
+        case "SI":
+          if (a.length >= 2) { siW = a[0]; siH = a[1]; } else { siW = SI_DEFAULT_W; siH = SI_DEFAULT_H; }
+          break;
+
+        case "LB": {
+          let text = tk.text;
+          if (/[\r\n]/.test(text)) warn("lb-crlf", "Line breaks inside LB labels were removed; multi-line labels are drawn on one line.");
+          text = text.replace(/[\r\n]/g, " ");
+          if (text.includes("_")) warn("lb-us", "Underscores in labels were replaced with '-', since '_' ends character plotting.");
+          if (text.includes("^")) warn("lb-caret", "Carets in labels were replaced with ' ', since '^' has a handshake meaning inside character plotting.");
+          text = text.replace(/_/g, "-").replace(/\^/g, " ").replace(/[^\x20-\x7e]/g, "?");
+          if (opt.labels && text.length) target.push({ t: "label", x: px, y: py, text, h: siH });
+          else if (!opt.labels && text.length) warn("lb-skip", "LB labels were skipped (Convert LB text is off).");
+          // Advance the pen by the label's width (HP-GL character cell is 1.5 x char width).
+          push("move", px + text.length * siW * 1.5 * 400, py);
+          break;
+        }
+
+        case "DT": break;
+        case "PE": warn("pe", "PE (polyline encoded) data isn't supported and was skipped."); break;
+        case "CT": if ((a[0] ?? 0) === 1) warn("ct", "CT1 (chord-length mode) isn't supported; chord angles were used instead."); break;
+        case "LT": warn("lt", "LT line types were ignored. DM/PL's line patterns don't match HP-GL's."); break;
+        case "VS": warn("vs", "VS pen speeds were ignored."); break;
+        case "DI": case "DR": case "SL": case "SR": case "ES":
+          warn("txt-dir", `Label direction, slant and spacing commands (${tk.cmd} and similar) were ignored.`); break;
+        case "RO": warn("ro", "RO (rotate coordinate system) was ignored. Use the Rotate 90° option instead."); break;
+        case "IW": warn("iw", "IW (input window) was ignored; no clipping was applied."); break;
+        default:
+          warn("unk-" + tk.cmd, `${tk.cmd} isn't supported and was ignored.`);
+      }
+    }
+    if (target === poly) warn("pm-open", "A polygon (PM0) was never closed with PM2; it wasn't drawn.");
+    return ops;
+  }
+
+  // ── DM/PL writer ──
+  function emit(ops, opt, warn) {
+    const factor = HPGL_UNIT_MM / 25.4 * opt.stepsPerInch;   // HP-GL units → plotter steps
+    const fx = v => Math.round(v * factor);
+
+    // Character height code nearest to the HP-GL label height (SI is in cm).
+    function textCode(hcm) {
+      const want = hcm / 2.54;
+      let best = 0, bestErr = Infinity;
+      TEXT_SIZES_IN.forEach((sz, k) => {
+        const err = Math.abs(Math.log(sz / want));
+        if (err < bestErr) { bestErr = err; best = k; }
+      });
+      return TEXT_CODES[best];
+    }
+
+    // Leading space: the manual advises sending a character before the first ;:
+    // after power-on or RESET.
+    const toks = [" ;:H A "];
+    let state = null, last = null, pen = null, pending = null;
+    let segments = 0, outOfRange = false;
+    const check = (x, y) => {
+      if (x < 0 || y < 0 || x > opt.maxX || y > opt.maxY) outOfRange = true;
+    };
+
+    // Send the waiting pen-up move, so travel that leads nowhere is never output.
+    function flushMove() {
+      if (!pending) return;
+      if (!(last && last.x === pending.x && last.y === pending.y)) {
+        if (state !== "U") { toks.push("U "); state = "U"; }
+        toks.push(`${pending.x},${pending.y},`);
+        check(pending.x, pending.y);
+        last = pending;
+      }
+      pending = null;
+    }
+
+    for (const op of ops) {
+      if (op.t === "pen") {
+        if (op.n !== pen) {
+          toks.push(`P${op.n},`);
+          // The manual says P (except P0) lowers the pen automatically on returning
+          // to the last plotting position, so the next move must state U or D.
+          state = null;
+        }
+        pen = op.n;
+        continue;
+      }
+      const x = fx(op.x), y = fx(op.y);
+
+      if (op.t === "move") {
+        pending = { x, y };
+      } else if (op.t === "draw") {
+        flushMove();
+        if (state !== "D") { toks.push("D "); state = "D"; }
+        if (!(last && last.x === x && last.y === y)) {
+          toks.push(`${x},${y},`);
+          check(x, y);
+          segments++;
+        }
+        last = { x, y };
+      } else if (op.t === "label") {
+        pending = { x, y };
+        flushMove();
+        if (state !== "U") { toks.push("U "); state = "U"; }
+        // Same form as the manual's example "S13 TANDY"
+        toks.push(`S1${textCode(op.h)} ${op.text}_ `);
+        state = null; last = null;   // pen state and position after text aren't tracked
+      }
+    }
+    if (state !== "U") toks.push("U ");
+    if (pen !== 0) toks.push("P0,");   // stow the pen; the manual says always end with an empty holder
+    toks.push("@");                     // deselect
+
+    if (outOfRange) {
+      warn("oob", `Some points fall outside the plotter's 0–${opt.maxX} × 0–${opt.maxY} step range; the plotter's soft limits will stop the pen there.`);
+    }
+
+    // Short lines, each ending in a delimiter. The plotter takes blocks of up to
+    // 256 bytes ended by a CR and answers with a CR when it can take more.
+    const lines = [];
+    let line = "";
+    for (const t of toks) {
+      if (line.length + t.length > 72 && line.length) { lines.push(line); line = ""; }
+      line += t;
+    }
+    if (line) lines.push(line);
+
+    return { text: lines.join("\r\n") + "\r\n", segments, outOfRange };
+  }
+
+  window.hpglToDmpl = function (text, options) {
+    const opt = Object.assign({ pens: 6, stepsPerInch: 200, maxX: 1850, maxY: 1400, labels: true }, options || {});
+    const warnings = new Map();
+    const warn = (k, m) => { if (!warnings.has(k)) warnings.set(k, m); };
+    const ops = interpret(tokenize(text), opt, warn);
+    const res = emit(ops, opt, warn);
+    if (!res.segments) warn("empty", "No drawing commands were found.");
+    return { text: res.text, warnings: [...warnings.values()], segments: res.segments, outOfRange: res.outOfRange };
+  };
+})();

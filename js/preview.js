@@ -1,9 +1,12 @@
 // ── preview.js ────────────────────────────────────────────────────
 // Canvas rendering for original and corrected previews.
 // Rotation of the plot itself is NOT applied here — corrected coordinates already include it.
-// The VIEW is turned 90° clockwise: the paper's long side (plotter Y, "Length")
-// runs left-to-right and its short side (plotter X, "Width") runs top-to-bottom,
-// so the whole page fits a wide, short preview box without squashing.
+// The VIEW always puts the page's long side left-to-right, so the whole page fits
+// a wide, short preview box without squashing:
+//   - most plotters: plotter Y ("Length") is the long side, so the view is turned
+//     90° clockwise (plotter X runs down the screen, plotter Y across it);
+//   - plotters whose X ("Width") is the long side (e.g. the TRS-80 26-1191,
+//     9¼ in X by 7 in Y) are shown unturned: X across the screen, Y up it.
 
 // Pen colours for the preview (pen 1 stays dark like before; SP0 / unknown pens too).
 const PEN_COLORS = ["#222", "#222", "#c0392b", "#1e7a46", "#1f5fa8",
@@ -45,6 +48,8 @@ function parsePenPaths(text) {
 // Which way plotter +Y points on screen (−1 = right, +1 = left). Set by renderPreview
 // and used by the drag code below.
 let lastYSign = -1;
+// Whether the last view was turned 90° clockwise (see the note at the top). Used by the drag code.
+let lastTurned = true;
 
 function renderPreview(text, plotterKey, modeKey, mediaKey, targetBox,
                        enableDrag) {
@@ -58,8 +63,14 @@ function renderPreview(text, plotterKey, modeKey, mediaKey, targetBox,
   targetBox.__previewArgs = [text, plotterKey, modeKey, mediaKey, targetBox, enableDrag];
   watchPreviewBox(targetBox);
 
-  const pageW = media.across * IN_TO_PU;   // plotter X extent  (short side, "Width")
-  const pageH = media.along  * IN_TO_PU;   // plotter Y extent  (long side,  "Length")
+  const pageW = media.across * IN_TO_PU;   // plotter X extent  ("Width")
+  const pageH = media.along  * IN_TO_PU;   // plotter Y extent  ("Length")
+
+  // Turn the view only when plotter Y is the long side, so the long side always runs across.
+  const turned = pageH >= pageW;
+  lastTurned = turned;
+  const dispW = turned ? pageH : pageW;    // page width on screen, in plotter units
+  const dispH = turned ? pageW : pageH;    // page height on screen, in plotter units
 
   const origin = mode.origin;
   const isEdge = (origin !== "center");
@@ -98,16 +109,16 @@ function renderPreview(text, plotterKey, modeKey, mediaKey, targetBox,
   if (availW < 80 || availH < 60) { availW = 420; availH = 300; }
   targetBox.__previewSize = [targetBox.clientWidth, targetBox.clientHeight];
 
-  // The page, turned 90° clockwise, is pageH wide and pageW tall.
-  const aspect = pageH / pageW;
+  // The page as shown is dispW wide and dispH tall.
+  const aspect = dispW / dispH;
   let innerW = Math.min(availW - padL - padR, (availH - padT - padB) * aspect);
   innerW = Math.max(innerW, 60);
   const innerH = innerW / aspect;
   // If the box is bigger than the page needs, the canvas still runs edge to edge.
   const slackX = Math.max(0, availW - (innerW + padL + padR));
   const slackY = Math.max(0, availH - (innerH + padT + padB));
-  // Corrected preview: page sits against the right-hand side; any spare width goes on the left.
-  const left = padL + (enableDrag ? slackX : slackX / 2);
+  // Any spare room is split evenly, so the page sits in the middle of the box.
+  const left = padL + slackX / 2;
   const top  = padT + slackY / 2;
   const canvasW = Math.round(innerW + padL + padR + slackX);
   const canvasH = Math.round(innerH + padT + padB + slackY);
@@ -128,22 +139,31 @@ function renderPreview(text, plotterKey, modeKey, mediaKey, targetBox,
   const ctx = canvas.getContext("2d");
   ctx.scale(hiRes, hiRes);
 
-  // ── Plotter units → screen pixels (view turned 90° clockwise) ──
-  //   plotter X  →  down the screen
-  //   plotter Y  →  right (left in "top-left" mode)
-  const baseS = Math.min(innerW / pageH, innerH / pageW);
+  // ── Plotter units → screen pixels ──
+  //   turned view:   plotter X → down the screen,  plotter Y → right (left in "top-left" mode)
+  //   unturned view: plotter X → right,            plotter Y → up (down in "top-left" mode)
+  const baseS = Math.min(innerW / dispW, innerH / dispH);
   const s = baseS * zoomLevel;
   lastCanvasScale = s;
 
   // Screen position of the plotter origin (0,0)
-  const ox = (ySign < 0) ? left - baseS * ya : left + baseS * yb;
-  const oy = top - baseS * xa;
-  const SX = (y, sc) => ox + sc * (-ySign) * y;
-  const SY = (x, sc) => oy + sc * x;
+  let ox, oy;
+  if (turned) {
+    ox = (ySign < 0) ? left - baseS * ya : left + baseS * yb;
+    oy = top - baseS * xa;
+  } else {
+    ox = left - baseS * xa;
+    oy = (ySign < 0) ? top + baseS * yb : top - baseS * ya;
+  }
+  // Plotter point (x, y) → screen [px, py]
+  const toScreen = (x, y, sc) => turned
+    ? [ox + sc * (-ySign) * y, oy + sc * x]
+    : [ox + sc * x,            oy + sc * ySign * y];
   // Rectangle (in plotter units) → screen rectangle {left, top, w, h}
   const scrRect = (x1, x2, y1, y2, sc) => {
-    const l = Math.min(SX(y1, sc), SX(y2, sc)), r = Math.max(SX(y1, sc), SX(y2, sc));
-    const t = Math.min(SY(x1, sc), SY(x2, sc)), b = Math.max(SY(x1, sc), SY(x2, sc));
+    const [ax, ay] = toScreen(x1, y1, sc), [bx, by] = toScreen(x2, y2, sc);
+    const l = Math.min(ax, bx), r = Math.max(ax, bx);
+    const t = Math.min(ay, by), b = Math.max(ay, by);
     return { left: l, top: t, w: r - l, h: b - t };
   };
 
@@ -221,8 +241,7 @@ function renderPreview(text, plotterKey, modeKey, mediaKey, targetBox,
     ctx.beginPath();
     for (let i = 0; i < pts.length; i++) {
       const [x, y] = pts[i];
-      const px = SX(y, s);
-      const py = SY(x, s);
+      const [px, py] = toScreen(x, y, s);
       if (i === 0) ctx.moveTo(px, py);
       else ctx.lineTo(px, py);
     }
@@ -253,8 +272,8 @@ function renderPreview(text, plotterKey, modeKey, mediaKey, targetBox,
   ctx.stroke();
   ctx.restore();
 
-  // ── Dimension labels: Length (plotter Y) along the bottom, Width (plotter X) down the right side ──
-  drawDimensions(ctx, page, media);
+  // ── Dimension labels: the long side along the bottom, the short side down the right ──
+  drawDimensions(ctx, page, media, turned);
 
   ctx.save();
   ctx.font = "11px system-ui, sans-serif";
@@ -269,7 +288,11 @@ function renderPreview(text, plotterKey, modeKey, mediaKey, targetBox,
 }
 
 // Draws the two dimension lines with arrowheads and labels around the page rectangle.
-function drawDimensions(ctx, page, media) {
+function drawDimensions(ctx, page, media, turned) {
+  const lengthTag = `Length (Y)  ${media.along} in`;
+  const widthTag  = `Width (X)  ${media.across} in`;
+  const bottomTag = turned ? lengthTag : widthTag;    // horizontal side
+  const sideTag   = turned ? widthTag  : lengthTag;   // vertical side
   const right = page.left + page.w, bottom = page.top + page.h;
   const col = "#666";
   ctx.save();
@@ -301,7 +324,7 @@ function drawDimensions(ctx, page, media) {
     ctx.restore();
   };
 
-  // Length (plotter Y): horizontal, below the page
+  // Horizontal side, below the page
   const yy = bottom + 15;
   ctx.beginPath();
   ctx.moveTo(page.left, bottom + 3); ctx.lineTo(page.left, yy + 4);
@@ -310,9 +333,9 @@ function drawDimensions(ctx, page, media) {
   ctx.stroke();
   arrow(page.left, yy, -1, 0);
   arrow(right, yy, 1, 0);
-  tag(`Length (Y)  ${media.along} in`, page.left + page.w / 2, yy, false);
+  tag(bottomTag, page.left + page.w / 2, yy, false);
 
-  // Width (plotter X): vertical, right of the page, text reads bottom-to-top
+  // Vertical side, right of the page, text reads bottom-to-top
   const xx = right + 20;
   ctx.beginPath();
   ctx.moveTo(right + 3, page.top);   ctx.lineTo(xx + 4, page.top);
@@ -321,7 +344,7 @@ function drawDimensions(ctx, page, media) {
   ctx.stroke();
   arrow(xx, page.top, 0, -1);
   arrow(xx, bottom, 0, 1);
-  tag(`Width (X)  ${media.across} in`, xx, page.top + page.h / 2, true);
+  tag(sideTag, xx, page.top + page.h / 2, true);
 
   ctx.restore();
 }
@@ -367,10 +390,12 @@ function onDragMove(e) {
   const dxPx = e.clientX - dragState.startPx;
   const dyPx = e.clientY - dragState.startPy;
 
-  // The view is turned 90° clockwise: screen-down is plotter X,
-  // screen-right is plotter Y (screen-left in "top-left" mode).
-  const dxPU = Math.round(dyPx / lastCanvasScale);
-  const dyPU = Math.round((-lastYSign * dxPx) / lastCanvasScale);
+  // Turned view: screen-down is plotter X, screen-right is plotter Y (screen-left in "top-left" mode).
+  // Unturned view: screen-right is plotter X, screen-up is plotter Y (screen-down in "top-left" mode).
+  const dxPU = Math.round((lastTurned ? dyPx : dxPx) / lastCanvasScale);
+  const dyPU = lastTurned
+    ? Math.round((-lastYSign * dxPx) / lastCanvasScale)
+    : Math.round((lastYSign * dyPx) / lastCanvasScale);
 
   manualOffsetX = dragState.startOffsetX + dxPU;
   manualOffsetY = dragState.startOffsetY + dyPU;
