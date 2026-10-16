@@ -293,10 +293,25 @@ function outputText() {
   return out;
 }
 
+// Bounding box of what the pen actually draws (pen-down lines only). Pen-up
+// moves, like the "PU;PA0,0;" many files end with to park the pen, are left
+// out, so they don't pull the centre away from the drawing.
+function drawnBBox(text) {
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  for (const path of parsePenPaths(text)) {
+    for (const [x, y] of path.pts) {
+      if (x < minX) minX = x; if (x > maxX) maxX = x;
+      if (y < minY) minY = y; if (y > maxY) maxY = y;
+    }
+  }
+  if (minX === Infinity) return getBBox(text);       // nothing drawn: fall back
+  return { minX, maxX, minY, maxY, spanX: maxX - minX, spanY: maxY - minY };
+}
+
 // correctedText at the current Size, scaled about the centre of the drawing.
 function zoomedText(text) {
   if (!text || Math.abs(zoomLevel - 1) < 1e-9) return text;
-  const b = getBBox(text);
+  const b = drawnBBox(text);
   if (!b) return applyZoom(text, zoomLevel);
   const cx = (b.minX + b.maxX) / 2, cy = (b.minY + b.maxY) / 2;
   return shiftPairs(applyZoom(text, zoomLevel),
@@ -347,7 +362,7 @@ function plotAreaPU() {
 // Fit: centre the drawing in the plot area and set Size so it just fills it.
 function scaleToFit() {
   if (!correctedBaseText) return;
-  const b = getBBox(correctedBaseText);
+  const b = drawnBBox(correctedBaseText);
   if (!b) return;
   const a = plotAreaPU();
   const z = Math.min((a.x2 - a.x1) / Math.max(1, b.spanX),
