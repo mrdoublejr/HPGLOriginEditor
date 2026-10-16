@@ -692,6 +692,63 @@
     return { text: out.join("\r\n") + "\r\n", segments, outOfRange: false };
   }
 
+  // ── Epson HI-80 writer (plotter mode 1) ──
+  // From the Epson HI-80 Operating Manual (1984), Chapter 5 "Plotter Mode 1 Commands":
+  //   Jn        Select Pen: 1-4 (5-8 also pick pens 1-4); 0 or -1 store and cap the
+  //             pens. "J-1" caps them without needing the CAP/OFF key afterwards
+  //             ("J0" locks the plotter until CAP/OFF is pressed), page 5-4.
+  //   Mx,y      Absolute Move (pen up), page 5-7
+  //   Dx,y,...  Absolute Draw through the points, no limit on the count, page 5-12
+  // Each coordinate is 0.1 mm, range -16383 to 16383. A command ends with CR (or
+  // NUL); the manual's examples are BASIC LPRINT lines, which end in CR LF, and it
+  // warns that BASIC breaks lines over 80 characters (end of Chapter 4), so runs
+  // are kept short.
+  // Origin: where pen 1 sits after initialization, the bottom left of the paper
+  // with X along the paper feed and Y along the pen carriage (pages 2-10, 3-3).
+  // Seen with X horizontal that is HP-GL's own layout, so X = x and Y = y.
+  function emitHi80(ops, opt, warn) {
+    const unit = v => Math.round(v / 4);              // 0.025 mm → 0.1 mm
+    const out = [];
+    let last = null, pending = null, pen = null, segments = 0, run = "";
+    const endRun = () => { if (run) { out.push(run); run = ""; } };
+    for (const op of ops) {
+      if (op.t === "pen") {
+        if (op.n === 0) continue;
+        let n = op.n;
+        if (n > 4) { n = ((n - 1) % 4) + 1; warn("hi80-pen", "The HI-80 holds 4 pens; higher pen numbers were wrapped onto pens 1–4."); }
+        if (n !== pen) { endRun(); out.push("J" + n); pen = n; }
+        continue;
+      }
+      if (op.t === "label") { warn("hi80-lb", "LB labels were skipped (the HI-80 writes text with its own P command)."); continue; }
+      const X = unit(op.x), Y = unit(op.y);
+      if (op.t === "move") { pending = { X, Y }; continue; }
+      if (pending && !(last && last.X === pending.X && last.Y === pending.Y)) {
+        endRun(); out.push(`M${pending.X},${pending.Y}`); last = pending;
+      }
+      pending = null;
+      if (last && last.X === X && last.Y === Y) continue;
+      const pair = `${X},${Y}`;
+      if (run && run.length + pair.length + 1 > 72) endRun();
+      run = run ? `${run},${pair}` : `D${pair}`;
+      last = { X, Y };
+      segments++;
+    }
+    endRun();
+    out.push("J-1");                                   // lift, store and cap the pens
+    return { text: out.join("\r\n") + "\r\n", segments, outOfRange: false };
+  }
+
+  window.hpglToHi80 = function (text, options) {
+    const opt = Object.assign({ clampPens: false, labels: true }, options || {});
+    const warnings = new Map();
+    const warn = (k, m) => { if (!warnings.has(k)) warnings.set(k, m); };
+    const clip = clipOps(interpret(tokenize(text), opt, warn), opt.clip);
+    noteClipped(clip.clipped, warn);
+    const res = emitHi80(clip.ops, opt, warn);
+    if (!res.segments) warn("empty", "No drawing commands were found.");
+    return { text: res.text, warnings: [...warnings.values()], segments: res.segments, outOfRange: false, clipped: clip.clipped };
+  };
+
   window.hpglToApple410 = function (text, options) {
     const opt = Object.assign({ sp: 0, pageHeight: 7036, clampPens: false, labels: true }, options || {});
     const warnings = new Map();

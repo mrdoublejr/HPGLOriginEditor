@@ -562,6 +562,7 @@ const OUTPUT_FORMATS = {
   cgp115:   { name: "CGP-115",    ext: ".cgp",  convert: (t) => convertToCgp115(t) },
   tek4663:  { name: "Tek 4663",   ext: ".tek",  convert: (t) => convertToTek4663(t) },
   apple410: { name: "Apple 410",  ext: ".plt",  convert: (t) => convertToApple410(t) },
+  hi80:     { name: "Epson HI-80", ext: ".plt", convert: (t) => convertToHi80(t) },
 };
 
 // Radio Shack CGP-115: a plain command stream, 0.2 mm steps like the 1520.
@@ -575,6 +576,16 @@ function convertToApple410(text) {
     sp: media.sp,
     pageHeight: H,
     clip: { x0: 0, x1: W, y0: 0, y1: H },
+  });
+}
+
+// Epson HI-80 (plotter mode 1): 0.1 mm units from the bottom-left corner of the
+// effective drawing area. Lines are cut at that area's edge (manual Table 3-1).
+function convertToHi80(text) {
+  const p = PLOTTERS[plotterSelect.value];
+  const media = p.media[mediaSelect.value];
+  return hpglToHi80(text, {
+    clip: { x0: 0, x1: media.across * IN_TO_PU, y0: 0, y1: media.along * IN_TO_PU },
   });
 }
 

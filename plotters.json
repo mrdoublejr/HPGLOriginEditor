@@ -418,5 +418,27 @@
       "A3 (plot 400 × 285 mm)": { "across": 15.74803, "along": 11.22047 }
     },
     "defaultMedia": "A3 (plot 400 × 285 mm)"
+  },
+
+  "epson_hi80": {
+    "name": "Epson HI-80",
+    "unitsPerMM": 40,
+    "pens": 4,
+    "defaultMode": "hi80",
+    "margins": { "side": 0, "lead": 0, "trail": 0 },
+    "modes": {
+      "hi80": {
+        "label": "Plotter mode 1 commands (0.1 mm units; DIP switch SW-5 ON)",
+        "origin": "bottom-left",
+        "allowNegative": false,
+        "output": "hi80"
+      }
+    },
+    "media": {
+      "US letter (plot 251 × 192 mm)": { "across": 9.88189, "along": 7.55906 },
+      "A4 (plot 267 × 192 mm)": { "across": 10.51181, "along": 7.55906 },
+      "B5 (plot 227 × 164 mm)": { "across": 8.93701, "along": 6.45669 }
+    },
+    "defaultMedia": "US letter (plot 251 × 192 mm)"
   }
 }
