@@ -389,6 +389,88 @@ function attachDragHandlers() {
     };
     e.preventDefault();
   });
+
+  // Phones and tablets: one finger drags the drawing, two fingers pinch to zoom.
+  // touch-action: none stops the browser from scrolling the page instead.
+  canvas.style.touchAction = "none";
+  canvas.addEventListener("touchstart", onTouchStart, { passive: false });
+  canvas.addEventListener("touchmove", onTouchMove, { passive: false });
+  canvas.addEventListener("touchend", onTouchEnd);
+  canvas.addEventListener("touchcancel", onTouchEnd);
+}
+
+// Screen pixels moved → plotter units moved (same mapping as the mouse drag).
+function pxToPU(dxPx, dyPx) {
+  const dx = Math.round((lastTurned ? dyPx : dxPx) / lastCanvasScale);
+  const dy = lastTurned
+    ? Math.round((-lastYSign * dxPx) / lastCanvasScale)
+    : Math.round((lastYSign * dyPx) / lastCanvasScale);
+  return [dx, dy];
+}
+
+// ── Touch: drag and pinch-zoom on the corrected canvas ───────────
+let touchState = null;
+let touchRenderScheduled = false;
+
+function touchInfo(touches) {
+  const a = touches[0], b = touches[1];
+  if (!b) return { n: 1, x: a.clientX, y: a.clientY, dist: 0 };
+  return { n: 2, x: (a.clientX + b.clientX) / 2, y: (a.clientY + b.clientY) / 2,
+           dist: Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY) };
+}
+
+// (Re)start the gesture from the fingers now on the screen, so adding or
+// lifting a finger doesn't make the drawing jump.
+function beginTouch(touches) {
+  const t = touchInfo(touches);
+  touchState = { start: t, offX: manualOffsetX, offY: manualOffsetY, zoom: zoomLevel };
+}
+
+function onTouchStart(e) {
+  if (!correctedBaseText) return;
+  e.preventDefault();
+  previewCorrected.classList.add("dragging");
+  beginTouch(e.touches);
+}
+
+function onTouchMove(e) {
+  if (!touchState) return;
+  e.preventDefault();
+  const t = touchInfo(e.touches);
+  if (t.n !== touchState.start.n) { beginTouch(e.touches); return; }
+
+  // Move: follows one finger, or the middle point between two fingers.
+  const [dxPU, dyPU] = pxToPU(t.x - touchState.start.x, t.y - touchState.start.y);
+  manualOffsetX = touchState.offX + dxPU;
+  manualOffsetY = touchState.offY + dyPU;
+  updateOffsetDisplay();
+  correctedText = applyManualOffset(correctedBaseText);
+
+  // Pinch: Size changes with the distance between the two fingers.
+  if (t.n === 2 && touchState.start.dist > 10) {
+    const z = touchState.zoom * t.dist / touchState.start.dist;
+    zoomLevel = Math.max(ZOOM_MIN, Math.min(ZOOM_LIMIT, z));
+    const pct = Math.round(zoomLevel * 100);
+    zoomPercentEl.textContent = pct + "%";
+    zoomSlider.value = pct;
+  }
+
+  if (!touchRenderScheduled) {
+    touchRenderScheduled = true;
+    requestAnimationFrame(() => {
+      touchRenderScheduled = false;
+      renderPreview(correctedText, plotterSelect.value, hpglVersion.value,
+                    mediaSelect.value, previewCorrected, true);
+    });
+  }
+}
+
+function onTouchEnd(e) {
+  if (!touchState) return;
+  if (e.touches && e.touches.length > 0) { beginTouch(e.touches); return; }
+  touchState = null;
+  previewCorrected.classList.remove("dragging");
+  if (typeof refreshStatus === "function") refreshStatus();
 }
 
 function onDragMove(e) {
@@ -399,10 +481,7 @@ function onDragMove(e) {
 
   // Turned view: screen-down is plotter X, screen-right is plotter Y (screen-left in "top-left" mode).
   // Unturned view: screen-right is plotter X, screen-up is plotter Y (screen-down in "top-left" mode).
-  const dxPU = Math.round((lastTurned ? dyPx : dxPx) / lastCanvasScale);
-  const dyPU = lastTurned
-    ? Math.round((-lastYSign * dxPx) / lastCanvasScale)
-    : Math.round((lastYSign * dyPx) / lastCanvasScale);
+  const [dxPU, dyPU] = pxToPU(dxPx, dyPx);
 
   manualOffsetX = dragState.startOffsetX + dxPU;
   manualOffsetY = dragState.startOffsetY + dyPU;
