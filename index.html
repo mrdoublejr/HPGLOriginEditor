@@ -11,7 +11,51 @@
 <header>
   <h1>HPGL Origin Corrector</h1>
   <p>Fix HPGL coordinates for your plotter's origin and paper size</p>
+  <a href="#" class="contact-link" id="contactLink">✉ Contact / request a plotter</a>
 </header>
+
+<!-- Contact form (js/contact.js sends it to /message) -->
+<dialog class="contact-dialog" id="contactDialog" aria-labelledby="contactTitle">
+  <div class="c-head">
+    <h2 id="contactTitle">Contact / request a plotter</h2>
+    <button type="button" class="icon-btn subtle" id="cClose" aria-label="Close">✕</button>
+  </div>
+  <p class="c-intro">Found a problem, have a question, or want your plotter added? Send a note.
+    Manuals, drivers, docs and photos are very welcome. Attach them below or mention where to find them.
+    A manual is what I need to add a plotter.</p>
+  <form id="contactForm" novalidate>
+    <label>About
+      <select id="cTopic">
+        <option>Request a plotter</option>
+        <option>Something isn't working</option>
+        <option>Question</option>
+        <option>Other</option>
+      </select>
+    </label>
+    <label id="cPlotterRow">Plotter make and model
+      <input type="text" id="cPlotter" maxlength="120" placeholder="e.g. Roland DXY-1300">
+    </label>
+    <label>Message
+      <textarea id="cBody" rows="5" maxlength="4000" required></textarea>
+    </label>
+    <label>Your name <span class="c-opt">(optional)</span>
+      <input type="text" id="cName" maxlength="100" autocomplete="name">
+    </label>
+    <label>Email <span class="c-opt">(optional, only if you'd like a reply)</span>
+      <input type="email" id="cEmail" maxlength="200" autocomplete="email">
+    </label>
+    <label>Attach files <span class="c-opt">(optional: manuals, drivers, docs, photos, plot files)</span>
+      <input type="file" id="cFiles" multiple
+        accept=".pdf,.txt,.md,.rtf,.doc,.docx,.odt,.xls,.xlsx,.csv,.htm,.html,.jpg,.jpeg,.png,.gif,.webp,.bmp,.tif,.tiff,.zip,.7z,.rar,.gz,.tgz,.tar,.lzh,.hpgl,.hpg,.plt,.hgl,.bas,.dmp,.ini,.inf,.cfg">
+      <span class="c-opt" id="cFilesInfo">Up to 5 files, 25 MB in total. Zip up drivers and programs.</span>
+    </label>
+    <!-- spam trap: hidden from people, bots fill it in -->
+    <input type="text" id="cWebsite" class="c-trap" tabindex="-1" autocomplete="off" aria-hidden="true">
+    <p class="c-note">Your current plotter and paper settings are included, to help with problem reports.</p>
+    <button type="submit" class="btn-primary" id="cSend">Send message</button>
+  </form>
+  <p class="c-status" id="cStatus" role="status"></p>
+</dialog>
 
 <div class="container" id="appContainer" style="display:none;">
 
@@ -120,6 +164,7 @@
 <script src="js/correction.js"></script>
 <script src="js/dmpl.js"></script>
 <script src="js/main.js"></script>
+<script src="js/contact.js"></script>
 <script src="js/publicPlotLibrary-modal.js" defer></script>
 
 </body>

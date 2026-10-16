@@ -325,3 +325,33 @@ input[type="range"] {
   header { display: flex; justify-content: center; align-items: baseline; gap: 12px; }
   header p { margin-top: 0; }
 }
+
+/* ── Contact link and form ─────────────────────────────────────── */
+.contact-link { font-size: 0.85rem; color: #2a5db0; text-decoration: none; white-space: nowrap; }
+.contact-link:hover { text-decoration: underline; }
+.contact-dialog {
+  width: min(480px, calc(100vw - 32px));
+  margin: auto;
+  border: 1px solid #ddd; border-radius: 10px;
+  padding: 16px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.25);
+}
+.contact-dialog::backdrop { background: rgba(0, 0, 0, 0.35); }
+.c-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+.c-head h2 { font-size: 1.05rem; }
+.c-intro, .c-note { font-size: 0.8rem; color: #666; margin-bottom: 10px; line-height: 1.4; }
+.contact-dialog form { display: flex; flex-direction: column; gap: 10px; }
+.contact-dialog form[hidden], .contact-dialog [hidden] { display: none; }
+.contact-dialog label { display: flex; flex-direction: column; gap: 4px; font-size: 0.85rem; font-weight: 600; }
+.contact-dialog input, .contact-dialog select, .contact-dialog textarea {
+  font: inherit; font-weight: 400; font-size: 0.95rem;
+  padding: 7px 9px; border: 1px solid #ccc; border-radius: 6px; background: #fff;
+}
+.contact-dialog textarea { resize: vertical; }
+.c-opt { font-weight: 400; color: #888; }
+.c-trap { position: absolute; left: -9999px; width: 1px; height: 1px; opacity: 0; }
+.c-status { font-size: 0.9rem; margin-top: 8px; }
+.c-status.ok { color: #1e7a46; }
+.c-status.err { color: #c0392b; }
+.contact-dialog input[type="file"] { padding: 6px; font-size: 0.85rem; }
+#cFilesInfo.err { color: #c0392b; }
