@@ -9,27 +9,16 @@ function correctHPGL(text, plotterKey, modeKey, mediaKey, rotateDeg, noClamp) {
   const mode = p.modes[modeKey];
   const media = p.media[mediaKey];
 
-  const inIdx = text.indexOf("IN;");
-  const preamble = inIdx > 0 ? text.slice(0, inIdx) : "";
-  const body = inIdx > 0 ? text.slice(inIdx) : text;
+  // Files that scale their own units (IP + SC) are turned into plotter units first.
+  const scaled = resolveScaling(text);
+  text = scaled.text;
 
-  const coords = body.match(/-?\d+[,\s]+-?\d+/g);
-  if (!coords) throw new Error("No coordinates found in file");
-
-  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-  const parsed = [];
-  for (const m of coords) {
-    const [x, y] = m.split(/[,\s]+/).map(Number);
-    if (isNaN(x) || isNaN(y)) continue;
-    parsed.push([x, y]);
-    if (x < minX) minX = x;
-    if (x > maxX) maxX = x;
-    if (y < minY) minY = y;
-    if (y > maxY) maxY = y;
-  }
-
-  const cx = (minX + maxX) / 2;
-  const cy = (minY + maxY) / 2;
+  // Centre on what the pen actually draws; a "PU0,0" park at the start or end
+  // would otherwise pull the drawing off centre.
+  const box = hpglExtent(text, true) || hpglExtent(text, false);
+  if (!box) throw new Error("No coordinates found in file");
+  const cx = (box.minX + box.maxX) / 2;
+  const cy = (box.minY + box.maxY) / 2;
 
   const pageW = media.across * IN_TO_PU;
   const pageH = media.along  * IN_TO_PU;
@@ -48,49 +37,40 @@ function correctHPGL(text, plotterKey, modeKey, mediaKey, rotateDeg, noClamp) {
   const cosR = Math.cos(rad);
   const sinR = Math.sin(rad);
 
-  function transform(x, y) {
-    let px = x - cx;
-    let py = y - cy;
+  // Points (PA, and PU/PD after PA) are moved, turned and placed. Relative moves
+  // (PR, and PU/PD after PR) are only turned, and flipped for a top-left origin.
+  // Label text and other commands' numbers (DI, SI, SC, CI radius...) stay as they are.
+  let negativeClamped = 0;
+  let result = mapPairs(text, (x, y, kind) => {
+    const rel = kind === "rel";
+    let px = rel ? x : x - cx;
+    let py = rel ? y : y - cy;
 
     const rx = px * cosR - py * sinR;
     const ry = px * sinR + py * cosR;
-
-    px = rx + targetCx;
-    py = ry + targetCy;
+    px = rel ? rx : rx + targetCx;
+    py = rel ? ry : ry + targetCy;
 
     // HP-GL/2 top-left origin: Y is measured downward from the top.
     // Source files use Y measured upward from the bottom. Flip Y once.
-    if (mode.origin === "top-left") {
-      py = pageH - py;
-    }
+    if (mode.origin === "top-left") py = rel ? -py : pageH - py;
 
-    return [Math.round(px), Math.round(py)];
-  }
-
-  let i = 0;
-  let negativeClamped = 0;
-  let result = body.replace(/-?\d+[,\s]+-?\d+/g, () => {
-    const [x, y] = parsed[i++];
-    let [nx, ny] = transform(x, y);
-
-    if (!mode.allowNegative && !noClamp) {
+    let nx = Math.round(px), ny = Math.round(py);
+    if (!rel && !mode.allowNegative && !noClamp) {
       if (nx < 0) { nx = 0; negativeClamped++; }
       if (ny < 0) { ny = 0; negativeClamped++; }
     }
-
-    return `${nx},${ny}`;
+    return [nx, ny];
   });
 
   result = result.replace(/SP[0-9]*;\s*$/, "").trimEnd() + "\n";
-  return { text: preamble + result, negativeClamped };
+  return { text: result, negativeClamped, scalingUnresolved: scaled.unresolved };
 }
 
 // ── Manual offset (applied on top of corrected output) ───────────
 function applyManualOffset(text) {
   if (!text) return text;
   if (manualOffsetX === 0 && manualOffsetY === 0) return text;
-  return text.replace(/-?\d+[,\s]+-?\d+/g, (m) => {
-    const [x, y] = m.split(/[,\s]+/).map(Number);
-    return `${x + manualOffsetX},${y + manualOffsetY}`;
-  });
+  return mapPairs(text, (x, y, kind) =>
+    kind === "abs" ? [x + manualOffsetX, y + manualOffsetY] : null);
 }

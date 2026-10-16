@@ -13,6 +13,7 @@ let uploadConsent = null;
 
 // How many coordinates the last output clamped to 0 (shown in the status line).
 let lastNegativeClamped = 0;
+let lastScalingUnresolved = false;   // file uses SC without IP (see resolveScaling)
 
 function boot() {
   try {
@@ -250,6 +251,7 @@ function runCorrection() {
     // Size and drag offset, so it reflects what will actually be downloaded.
     const result = correctHPGL(currentText, plotterKey, modeKey, mediaKey,
                                rotationDeg, true);
+    lastScalingUnresolved = !!result.scalingUnresolved;
     correctedBaseText = (flipH || flipV)
       ? flipHPGL(result.text, flipH, flipV)
       : result.text;
@@ -283,11 +285,11 @@ function outputText() {
   // edge during conversion instead, so the drawing keeps its shape.
   if (!getMode().allowNegative && !OUTPUT_FORMATS[getMode().output]) {
     // Same rule the correction used to apply: any coordinate below 0 becomes 0.
-    out = out.replace(/-?\d+[,\s]+-?\d+/g, (m) => {
-      let [x, y] = m.split(/[,\s]+/).map(Number);
+    out = mapPairs(out, (x, y, kind) => {
+      if (kind !== "abs") return null;                  // relative moves: leave
       if (x < 0) { x = 0; lastNegativeClamped++; }
       if (y < 0) { y = 0; lastNegativeClamped++; }
-      return `${x},${y}`;
+      return [x, y];
     });
   }
   return out;
@@ -322,22 +324,8 @@ function zoomedText(text) {
 // angles and relative moves (PR, AR, ER, RR) are left alone.
 function shiftPairs(text, dx, dy) {
   if (!text || (dx === 0 && dy === 0)) return text;
-  const SKIP = new Set(["CI", "SI", "SR", "DI", "DR", "SP", "LT", "VS", "CT",
-                        "PR", "AR", "ER", "RR", "EW", "WG", "SC"]);
-  return text.replace(/(LB[^\x03]*\x03?)|([A-Za-z]{2})([^A-Za-z;\x03]*)/g,
-    (m, label, op, args) => {
-      if (label) return label;
-      if (SKIP.has(op.toUpperCase())) return m;
-      const nums = args.match(/-?\d+(?:\.\d+)?/g);
-      if (!nums || nums.length < 2) return m;
-      let k = 0;
-      const pairCount = Math.floor(nums.length / 2) * 2;
-      return op + args.replace(/-?\d+(?:\.\d+)?/g, (n) => {
-        const i = k++;
-        if (i >= pairCount) return n;
-        return String(Math.round(parseFloat(n) + (i % 2 === 0 ? dx : dy)));
-      });
-    });
+  return mapPairs(text, (x, y, kind) =>
+    kind === "abs" ? [Math.round(x + dx), Math.round(y + dy)] : null);
 }
 
 // The selected plotter's plot area (inside the margins), in plotter units.
@@ -374,32 +362,19 @@ function scaleToFit() {
   setZoom(z);
 }
 
-// Scales HP-GL about the plotter origin (0,0). Coordinate pairs are scaled;
-// a CI radius is scaled; arc angles (the odd number after an AA/AR pair) and
-// label text are left alone.
+// Scales HP-GL about the plotter origin (0,0): points and relative moves are
+// scaled, and so is a CI radius. Arc angles, label text and the numbers of other
+// commands (DI, SI, SC...) are left alone.
 function applyZoom(text, z) {
   if (!text || Math.abs(z - 1) < 1e-9) return text;
-  const fmt = (v) => String(Math.round(v * z));
-  return text.replace(/(LB[^\x03]*\x03?)|([A-Za-z]{2})([^A-Za-z;\x03]*)/g,
-    (m, label, op, args) => {
-      if (label) return label;                          // label text: untouched
-      const up = op.toUpperCase();
-      if (up === "CI") {                                // radius [,chord]
-        return op + args.replace(/-?\d+(?:\.\d+)?/, (r) => fmt(parseFloat(r)));
-      }
-      if (up === "SI" || up === "SR" || up === "DI" || up === "DR" ||
-          up === "SP" || up === "LT" || up === "VS" || up === "CT") {
-        return m;                                       // not coordinates
-      }
-      // Scale numbers two at a time (x,y); a lone trailing number (arc angle,
-      // chord) is left as it is.
-      const nums = args.match(/-?\d+(?:\.\d+)?/g);
-      if (!nums || nums.length < 2) return m;
-      let k = 0;
-      const pairCount = Math.floor(nums.length / 2) * 2;
-      return op + args.replace(/-?\d+(?:\.\d+)?/g, (n) =>
-        (k++ < pairCount) ? fmt(parseFloat(n)) : n);
-    });
+  const fmt = (v) => Math.round(v * z);
+  const scaled = mapPairs(text, (x, y) => [fmt(x), fmt(y)]);
+  const [pre, body] = splitPreamble(scaled);
+  return pre + body.replace(HPGL_CMD, (m, label, op, args) => {
+    if (label || op.toUpperCase() !== "CI") return m;
+    let k = 0;                                          // radius only, not the chord
+    return op + args.replace(HPGL_NUM, (n) => (k++ === 0 ? String(fmt(parseFloat(n))) : n));
+  });
 }
 
 // Status line under the corrected preview. Describes the file that the
@@ -420,6 +395,11 @@ function refreshStatus() {
   }
   if ((flipH || flipV) && FLIP_UNSUPPORTED.test(correctedBaseText)) {
     msg += " · arcs/circles/other shapes not flipped";
+    statusEl.classList.add("warn");
+  }
+
+  if (lastScalingUnresolved) {
+    msg += " · uses SC scaling without IP, so the plotter's own P1/P2 decide its size: check the position";
     statusEl.classList.add("warn");
   }
 
