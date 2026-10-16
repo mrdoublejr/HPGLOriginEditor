@@ -345,5 +345,33 @@
       "A4 · drafting (plot 277 × 190 mm)": { "across": 10.90551, "along": 7.48031 }
     },
     "defaultMedia": "C 22 × 17 in · drafting (plot 21.00 × 15.50 in)"
+  },
+
+  "apple410": {
+    "name": "Apple 410 Color Plotter (Yokogawa YEW PL-1000)",
+    "unitsPerMM": 40,
+    "pens": 4,
+    "defaultMode": "apple410",
+    "margins": { "side": 0, "lead": 0, "trail": 0 },
+    "modes": {
+      "apple410": {
+        "label": "Apple plotter commands (0.1 mm units, SP paper size)",
+        "origin": "bottom-left",
+        "allowNegative": false,
+        "output": "apple410"
+      }
+    },
+    "media": {
+      "SP0 · 8½ × 11 in lengthwise (plot 175.9 × 239.4 mm)": { "across": 6.9252, "along": 9.4252, "sp": 0 },
+      "SP1 · 8½ × 11 in sideways (plot 239.4 × 175.9 mm)": { "across": 9.4252, "along": 6.9252, "sp": 1 },
+      "SP2 · 11 × 17 in (B) (plot 239.4 × 391.8 mm)": { "across": 9.4252, "along": 15.4252, "sp": 2 },
+      "SP3 · A3 (plot 257 × 380 mm)": { "across": 10.11811, "along": 14.96063, "sp": 3 },
+      "SP4 · A4 lengthwise (plot 170 × 257 mm)": { "across": 6.69291, "along": 10.11811, "sp": 4 },
+      "SP5 · A4 sideways (plot 257 × 170 mm)": { "across": 10.11811, "along": 6.69291, "sp": 5 },
+      "SP6 · B4 (plot 217 × 324 mm)": { "across": 8.54331, "along": 12.75591, "sp": 6 },
+      "SP7 · B5 lengthwise (plot 142 × 217 mm)": { "across": 5.59055, "along": 8.54331, "sp": 7 },
+      "SP8 · B5 sideways (plot 217 × 142 mm)": { "across": 8.54331, "along": 5.59055, "sp": 8 }
+    },
+    "defaultMedia": "SP0 · 8½ × 11 in lengthwise (plot 175.9 × 239.4 mm)"
   }
 }

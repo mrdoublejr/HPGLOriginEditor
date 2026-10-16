@@ -647,6 +647,62 @@
     return { text: out.join("\r") + "\r", segments, outOfRange: false };
   }
 
+  // ── Apple 410 Color Plotter writer ──
+  // From the Apple Color Plotter manual (Chapter 5 and Appendix C):
+  //   SPn         Size Paper: sets the Viewport for paper size n (0-8, Table 5-2)
+  //   PSn         Pen Select 1-4
+  //   MAx,y       Move Absolute (pen up)
+  //   DAx,y,...   Draw Absolute through the points
+  //   CH          Move to home status (for changing paper)
+  // Units are 0.1 mm. The zero-zero point is the upper left corner as you face
+  // the plotter; X runs toward the front (the paper moves), Y runs to the right
+  // (the pen head moves). Return / Line Feed are valid end-of-command marks.
+  // HP-GL here is bottom-left with x across (the plotter's Y) and y along the
+  // feed, so Y = x and X = pageHeight - y: a turn, not a mirror.
+  function emitApple410(ops, opt, warn) {
+    const unit = v => Math.round(v / 4);              // 0.025 mm → 0.1 mm
+    const H = opt.pageHeight;                           // HP-GL units along the feed
+    const out = ["SP" + opt.sp];
+    let last = null, pending = null, pen = null, segments = 0, run = "";
+    const endRun = () => { if (run) { out.push(run); run = ""; } };
+    for (const op of ops) {
+      if (op.t === "pen") {
+        if (op.n === 0) continue;
+        let n = op.n;
+        if (n > 4) { n = ((n - 1) % 4) + 1; warn("a410-pen", "The Apple 410 holds 4 pens; higher pen numbers were wrapped onto pens 1–4."); }
+        if (n !== pen) { endRun(); out.push("PS" + n); pen = n; }
+        continue;
+      }
+      if (op.t === "label") { warn("a410-lb", "LB labels were skipped (the Apple 410 writes text with its own PL command)."); continue; }
+      const X = unit(H - op.y), Y = unit(op.x);
+      if (op.t === "move") { pending = { X, Y }; continue; }
+      if (pending && !(last && last.X === pending.X && last.Y === pending.Y)) {
+        endRun(); out.push(`MA${pending.X},${pending.Y}`); last = pending;
+      }
+      pending = null;
+      if (last && last.X === X && last.Y === Y) continue;
+      const pair = `${X},${Y}`;
+      if (run && run.length + pair.length + 1 > 72) endRun();
+      run = run ? `${run},${pair}` : `DA${pair}`;
+      last = { X, Y };
+      segments++;
+    }
+    endRun();
+    out.push("CH");
+    return { text: out.join("\r\n") + "\r\n", segments, outOfRange: false };
+  }
+
+  window.hpglToApple410 = function (text, options) {
+    const opt = Object.assign({ sp: 0, pageHeight: 7036, clampPens: false, labels: true }, options || {});
+    const warnings = new Map();
+    const warn = (k, m) => { if (!warnings.has(k)) warnings.set(k, m); };
+    const clip = clipOps(interpret(tokenize(text), opt, warn), opt.clip);
+    noteClipped(clip.clipped, warn);
+    const res = emitApple410(clip.ops, opt, warn);
+    if (!res.segments) warn("empty", "No drawing commands were found.");
+    return { text: res.text, warnings: [...warnings.values()], segments: res.segments, outOfRange: false, clipped: clip.clipped };
+  };
+
   window.hpglToTek4663 = function (text, options) {
     const opt = Object.assign({ pens: 2, address: "A", clampPens: false, labels: true }, options || {});
     const warnings = new Map();

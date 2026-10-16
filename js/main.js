@@ -399,9 +399,23 @@ const OUTPUT_FORMATS = {
   c64basic: { name: "C64 BASIC",  ext: ".bas",  convert: (t) => convertToCbm1520(t) },
   cgp115:   { name: "CGP-115",    ext: ".cgp",  convert: (t) => convertToCgp115(t) },
   tek4663:  { name: "Tek 4663",   ext: ".tek",  convert: (t) => convertToTek4663(t) },
+  apple410: { name: "Apple 410",  ext: ".plt",  convert: (t) => convertToApple410(t) },
 };
 
 // Radio Shack CGP-115: a plain command stream, 0.2 mm steps like the 1520.
+// Apple 410 Color Plotter: SP sets the paper size (media.sp), units are 0.1 mm.
+// The page's "along" side is the plotter's X axis (paper feed).
+function convertToApple410(text) {
+  const p = PLOTTERS[plotterSelect.value];
+  const media = p.media[mediaSelect.value];
+  const W = media.across * IN_TO_PU, H = media.along * IN_TO_PU;
+  return hpglToApple410(text, {
+    sp: media.sp,
+    pageHeight: H,
+    clip: { x0: 0, x1: W, y0: 0, y1: H },
+  });
+}
+
 // Tektronix 4663: explicit serial commands in millimetres. Lines are cut at the
 // edge of the selected page (its plot area from the manual's Table 1-6).
 function convertToTek4663(text) {
