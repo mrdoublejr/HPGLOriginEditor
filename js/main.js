@@ -738,11 +738,11 @@ function onDownload() {
   const mode = hpglVersion.value;
 
   let content = outputText();
-  let fileName = base + "_FIX_" + mode + ".hpgl";
+  let fileName = base + "_CORRECTED_" + mode + ".hpgl";
   const fmt = OUTPUT_FORMATS[getMode().output];
   if (fmt) {
     content = fmt.convert(content).text;
-    fileName = base + "_FIX_" + mode + fmt.ext;
+    fileName = base + "_CORRECTED_" + mode + fmt.ext;
   }
 
   const blob = new Blob([content], { type: "text/plain" });
