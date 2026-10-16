@@ -398,9 +398,21 @@ const OUTPUT_FORMATS = {
   dmpl:     { name: "DM/PL",      ext: ".dmpl", convert: (t) => convertToDmpl(t) },
   c64basic: { name: "C64 BASIC",  ext: ".bas",  convert: (t) => convertToCbm1520(t) },
   cgp115:   { name: "CGP-115",    ext: ".cgp",  convert: (t) => convertToCgp115(t) },
+  tek4663:  { name: "Tek 4663",   ext: ".tek",  convert: (t) => convertToTek4663(t) },
 };
 
 // Radio Shack CGP-115: a plain command stream, 0.2 mm steps like the 1520.
+// Tektronix 4663: explicit serial commands in millimetres. Lines are cut at the
+// edge of the selected page (its plot area from the manual's Table 1-6).
+function convertToTek4663(text) {
+  const p = PLOTTERS[plotterSelect.value];
+  const media = p.media[mediaSelect.value];
+  return hpglToTek4663(text, {
+    pens: p.pens,
+    clip: { x0: 0, x1: media.across * IN_TO_PU, y0: 0, y1: media.along * IN_TO_PU },
+  });
+}
+
 function convertToCgp115(text) {
   const p = PLOTTERS[plotterSelect.value];
   const mode = getMode();

@@ -602,6 +602,62 @@
     return { text: out.join("\r") + "\r", segments, outOfRange };
   }
 
+  // ── Tektronix 4663 writer ──
+  // Explicit serial commands from the 4663 Operator's Manual (070-2670-00, Section 3):
+  //   ATN ADD AE        Plotter On (must be the first command)
+  //   ATN ADD BV 2      Select Device Units: 2 = millimetres
+  //   ATN ADD BO 0      Select Coordinate Type: 0 = absolute
+  //   ATN ADD BP n      Select Pen (1 = front pen, 2)
+  //   ATN ADD X x,y     Move (pen up)
+  //   ATN ADD Y x,y,... Draw (pen down) through the points
+  //   ATN ADD AI        Move to Load Point (upper right of the platen)
+  // ATN is ESC (the factory Attention Character) and ADD is the Serial Device
+  // Address, A by default. In millimetre units (0,0) is the lower-left corner of
+  // the page set on the Parameter Entry card. One HP-GL unit is 0.025 mm.
+  function emitTek4663(ops, opt, warn) {
+    const head = "\x1b" + (opt.address || "A");
+    const mm = v => String(Math.round(v) / 40);
+    const out = [head + "AE", head + "BV 2", head + "BO 0"];
+    let last = null, pending = null, pen = null, segments = 0, run = "";
+    const endRun = () => { if (run) { out.push(run); run = ""; } };
+    for (const op of ops) {
+      if (op.t === "pen") {
+        if (op.n === 0) continue;
+        let n = op.n;
+        if (n > opt.pens) { n = ((n - 1) % opt.pens) + 1; warn("tek-pen", `The 4663 has ${opt.pens} pens; higher pen numbers were wrapped onto pens 1–${opt.pens}.`); }
+        if (n !== pen) { endRun(); out.push(head + "BP " + n); pen = n; }
+        continue;
+      }
+      if (op.t === "label") { warn("tek-lb", "LB labels were skipped (the 4663 prints text with its own Print command)."); continue; }
+      const x = mm(op.x), y = mm(op.y);
+      if (op.t === "move") { pending = { x, y }; continue; }
+      if (pending && !(last && last.x === pending.x && last.y === pending.y)) {
+        endRun(); out.push(`${head}X ${pending.x},${pending.y}`); last = pending;
+      }
+      pending = null;
+      if (last && last.x === x && last.y === y) continue;
+      const pair = `${x},${y}`;
+      if (run && run.length + pair.length + 1 > 72) endRun();
+      run = run ? `${run},${pair}` : `${head}Y ${pair}`;
+      last = { x, y };
+      segments++;
+    }
+    endRun();
+    out.push(head + "AI");
+    return { text: out.join("\r") + "\r", segments, outOfRange: false };
+  }
+
+  window.hpglToTek4663 = function (text, options) {
+    const opt = Object.assign({ pens: 2, address: "A", clampPens: false, labels: true }, options || {});
+    const warnings = new Map();
+    const warn = (k, m) => { if (!warnings.has(k)) warnings.set(k, m); };
+    const clip = clipOps(interpret(tokenize(text), opt, warn), opt.clip);
+    noteClipped(clip.clipped, warn);
+    const res = emitTek4663(clip.ops, opt, warn);
+    if (!res.segments) warn("empty", "No drawing commands were found.");
+    return { text: res.text, warnings: [...warnings.values()], segments: res.segments, outOfRange: false, clipped: clip.clipped };
+  };
+
   window.hpglToCgp115 = function (text, options) {
     const opt = Object.assign({ maxX: 479, maxY: 998, pens: 99, clampPens: false, labels: true }, options || {});
     const warnings = new Map();

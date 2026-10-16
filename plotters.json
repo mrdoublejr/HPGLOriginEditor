@@ -320,5 +320,30 @@
       "24 × 36 in · large chart (plot 34 × 21.5 in)": { "across": 34, "along": 21.5, "chart": "EF" }
     },
     "defaultMedia": "A1 · large chart (plot 31 × 21.5 in)"
+  },
+
+  "tek4663": {
+    "name": "Tektronix 4663",
+    "unitsPerMM": 40,
+    "pens": 2,
+    "defaultMode": "tek4663",
+    "margins": { "side": 0, "lead": 0, "trail": 0 },
+    "modes": {
+      "tek4663": {
+        "label": "4663 commands (mm units, ESC attention, address A)",
+        "origin": "bottom-left",
+        "allowNegative": false,
+        "output": "tek4663"
+      }
+    },
+    "media": {
+      "C 22 × 17 in · drafting (plot 21.00 × 15.50 in)": { "across": 21.0, "along": 15.5 },
+      "B 17 × 11 in · drafting (plot 15.76 × 10.24 in)": { "across": 15.76, "along": 10.24 },
+      "A 11 × 8.5 in · drafting (plot 10.50 × 7.74 in)": { "across": 10.5, "along": 7.74 },
+      "A2 · drafting (plot 574 × 400 mm)": { "across": 22.59843, "along": 15.74803 },
+      "A3 · drafting (plot 400 × 277 mm)": { "across": 15.74803, "along": 10.90551 },
+      "A4 · drafting (plot 277 × 190 mm)": { "across": 10.90551, "along": 7.48031 }
+    },
+    "defaultMedia": "C 22 × 17 in · drafting (plot 21.00 × 15.50 in)"
   }
 }
