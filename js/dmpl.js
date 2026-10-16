@@ -25,7 +25,9 @@
 // circles and rectangles are sent as short line segments instead.
 //
 // Also: hpglToCbm1520(text, { maxX, maxY }) turns the same HP-GL into a Commodore
-// BASIC program for the Commodore 1520 printer plotter (see the end of this file).
+// BASIC program for the Commodore 1520 printer plotter, and hpglToCgp115(text, { maxX,
+// maxY }) into the plain command stream of the Radio Shack CGP-115 (see the end of
+// this file).
 //
 // Public:  hpglToDmpl(text, { pens, stepsPerInch, maxX, maxY, textStyle,
 //                              preamble, clampPens })
@@ -121,6 +123,56 @@
       i = j;
     }
     return out;
+  }
+
+  // ---------------------------------------------------------------- paper-edge clipping
+  // Cuts every line at the edge of the box {x0,x1,y0,y1} (HP-GL units) instead of
+  // pushing out-of-range points onto the edge, so what stays on the paper keeps
+  // its shape. Lines entirely off the paper are dropped; labels that start off
+  // the paper are dropped. Returns { ops, clipped } (clipped = lines cut or dropped).
+  function clipOps(ops, box) {
+    if (!box) return { ops, clipped: 0 };
+    const out = [];
+    let cx = 0, cy = 0;          // pen position in the source drawing
+    let at = null;               // last position written to out
+    let clipped = 0;
+    const inside = (x, y) => x >= box.x0 && x <= box.x1 && y >= box.y0 && y <= box.y1;
+    for (const op of ops) {
+      if (op.t === "pen") { out.push(op); continue; }
+      if (op.t === "move") { cx = op.x; cy = op.y; continue; }
+      if (op.t === "label") {
+        if (inside(op.x, op.y)) { out.push({ t: "move", x: op.x, y: op.y }); out.push(op); at = { x: op.x, y: op.y }; }
+        else clipped++;
+        cx = op.x; cy = op.y;
+        continue;
+      }
+      // draw: Liang-Barsky clip of (cx,cy)-(op.x,op.y)
+      const dx = op.x - cx, dy = op.y - cy;
+      let t0 = 0, t1 = 1, visible = true;
+      const edge = (p, q) => {
+        if (p === 0) { if (q < 0) visible = false; return; }
+        const r = q / p;
+        if (p < 0) { if (r > t1) visible = false; else if (r > t0) t0 = r; }
+        else       { if (r < t0) visible = false; else if (r < t1) t1 = r; }
+      };
+      edge(-dx, cx - box.x0); edge(dx, box.x1 - cx);
+      edge(-dy, cy - box.y0); edge(dy, box.y1 - cy);
+      if (!visible) { clipped++; }
+      else {
+        if (t0 > 0 || t1 < 1) clipped++;
+        const ax = cx + t0 * dx, ay = cy + t0 * dy;
+        const bx = cx + t1 * dx, by = cy + t1 * dy;
+        if (!at || at.x !== ax || at.y !== ay) out.push({ t: "move", x: ax, y: ay });
+        out.push({ t: "draw", x: bx, y: by });
+        at = { x: bx, y: by };
+      }
+      cx = op.x; cy = op.y;
+    }
+    return { ops: out, clipped };
+  }
+
+  function noteClipped(n, warn) {
+    if (n) warn("clip", `${n} line${n !== 1 ? "s" : ""} ran off the paper and ${n !== 1 ? "were" : "was"} cut at the edge.`);
   }
 
   // ---------------------------------------------------------------- HPGL interpreter
@@ -474,10 +526,91 @@
     const opt = Object.assign({ maxX: 479, maxY: 998, pens: 99, clampPens: false, labels: true }, options || {});
     const warnings = new Map();
     const warn = (k, m) => { if (!warnings.has(k)) warnings.set(k, m); };
-    const ops = interpret(tokenize(text), opt, warn);
-    const res = emitCbm1520(ops, opt, warn);
+    const clip = clipOps(interpret(tokenize(text), opt, warn), opt.clip);
+    noteClipped(clip.clipped, warn);
+    const res = emitCbm1520(clip.ops, opt, warn);
     if (!res.segments) warn("empty", "No drawing commands were found.");
-    return { text: res.text, warnings: [...warnings.values()], segments: res.segments, outOfRange: res.outOfRange };
+    return { text: res.text, warnings: [...warnings.values()], segments: res.segments, outOfRange: res.outOfRange, clipped: clip.clipped };
+  };
+
+  // ── Radio Shack CGP-115 writer ──
+  // The CGP-115 takes plain ASCII, so the file can be sent straight to it (CGP-115
+  // manual, pp. 13-22): CHR$(18) selects Graphic Mode, then one command per line,
+  // each ended by a carriage return as LPRINT sends it:
+  //   Cn          colour 0 black, 1 blue, 2 green, 3 red
+  //   Mx,y        move (pen up) to x,y from the origin
+  //   Dx,y,x,y... draw (pen down) through the points
+  //   A           back to Text Mode, pen to the left margin, origin reset there
+  // Steps are 0.2 mm, 480 across (X 0-479); X and Y must be within -999..999.
+  // When Graphic Mode starts the origin is the pen position at the left margin and
+  // +Y is up the paper, so the drawing is shifted down until its top edge sits on
+  // the current line (all Y at or below 0). It then plots as the paper feeds
+  // forward, instead of backing the roll up.
+  function emitCgp115(ops, opt, warn) {
+    const steps = v => Math.round(v * 0.025 / 0.2);
+    // Top of what actually gets drawn (draw end points and the points they start from).
+    let top = -Infinity, prev = null;
+    for (const op of ops) {
+      if (op.t === "draw") { top = Math.max(top, steps(op.y)); if (prev) top = Math.max(top, steps(prev.y)); }
+      if (op.t === "move" || op.t === "draw") prev = op;
+    }
+    if (!Number.isFinite(top)) top = 0;
+    const fx = v => steps(v);
+    const fy = v => steps(v) - top;
+    const out = ["\x12"];                 // CHR$(18): Graphic Mode
+    let last = null, pending = null, colour = null, outOfRange = false, segments = 0;
+    let run = "", minY = 0;
+    const check = (x, y) => { if (x < 0 || x > opt.maxX || y < -999 || y > 999) outOfRange = true; };
+    const endRun = () => { if (run) { out.push(run); run = ""; } };
+    function flushMove() {
+      if (!pending) return;
+      if (!(last && last.x === pending.x && last.y === pending.y)) {
+        endRun();
+        out.push(`M${pending.x},${pending.y}`);
+        check(pending.x, pending.y);
+        last = pending;
+      }
+      pending = null;
+    }
+    for (const op of ops) {
+      if (op.t === "pen") {
+        if (op.n === 0) continue;
+        const c = (op.n - 1) % 4;
+        if (c !== colour) { endRun(); out.push(`C${c}`); colour = c; }
+        continue;
+      }
+      if (op.t === "label") { warn("cgp-lb", "LB labels were skipped (the CGP-115 prints text with its own P command)."); continue; }
+      const x = fx(op.x), y = fy(op.y);
+      if (op.t === "move") pending = { x, y };
+      else if (op.t === "draw") {
+        flushMove();
+        if (!(last && last.x === x && last.y === y)) {
+          const pair = `${x},${y}`;
+          if (run && run.length + pair.length + 1 > 70) endRun();
+          run = run ? `${run},${pair}` : `D${pair}`;
+          check(x, y);
+          minY = Math.min(minY, y);
+          segments++;
+        }
+        last = { x, y };
+      }
+    }
+    endRun();
+    out.push(`M0,${minY}`);               // finish below the drawing, at the left margin
+    out.push("A");                         // back to Text Mode
+    if (outOfRange) warn("oob", `Some points fall outside the CGP-115's 0–${opt.maxX} step width or its ±999 step range.`);
+    return { text: out.join("\r") + "\r", segments, outOfRange };
+  }
+
+  window.hpglToCgp115 = function (text, options) {
+    const opt = Object.assign({ maxX: 479, maxY: 998, pens: 99, clampPens: false, labels: true }, options || {});
+    const warnings = new Map();
+    const warn = (k, m) => { if (!warnings.has(k)) warnings.set(k, m); };
+    const clip = clipOps(interpret(tokenize(text), opt, warn), opt.clip);
+    noteClipped(clip.clipped, warn);
+    const res = emitCgp115(clip.ops, opt, warn);
+    if (!res.segments) warn("empty", "No drawing commands were found.");
+    return { text: res.text, warnings: [...warnings.values()], segments: res.segments, outOfRange: res.outOfRange, clipped: clip.clipped };
   };
 
   window.hpglToDmpl = function (text, options) {
@@ -486,9 +619,10 @@
                                 textStyle: "trs80" }, options || {});
     const warnings = new Map();
     const warn = (k, m) => { if (!warnings.has(k)) warnings.set(k, m); };
-    const ops = interpret(tokenize(text), opt, warn);
-    const res = emit(ops, opt, warn);
+    const clip = clipOps(interpret(tokenize(text), opt, warn), opt.clip);
+    noteClipped(clip.clipped, warn);
+    const res = emit(clip.ops, opt, warn);
     if (!res.segments) warn("empty", "No drawing commands were found.");
-    return { text: res.text, warnings: [...warnings.values()], segments: res.segments, outOfRange: res.outOfRange };
+    return { text: res.text, warnings: [...warnings.values()], segments: res.segments, outOfRange: res.outOfRange, clipped: clip.clipped };
   };
 })();

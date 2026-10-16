@@ -276,7 +276,9 @@ function outputText() {
   if (!correctedText) return null;
   let out = applyZoom(correctedText, zoomLevel);
   lastNegativeClamped = 0;
-  if (!getMode().allowNegative) {
+  // Plotters with a converter (DM/PL, C64 BASIC, CGP-115) cut lines at the paper
+  // edge during conversion instead, so the drawing keeps its shape.
+  if (!getMode().allowNegative && !OUTPUT_FORMATS[getMode().output]) {
     // Same rule the correction used to apply: any coordinate below 0 becomes 0.
     out = out.replace(/-?\d+[,\s]+-?\d+/g, (m) => {
       let [x, y] = m.split(/[,\s]+/).map(Number);
@@ -342,6 +344,10 @@ function refreshStatus() {
   if (fmt) {
     const conv = fmt.convert(out);
     msg += ` · ${fmt.name} ${conv.text.length} bytes`;
+    if (conv.clipped) {
+      msg += ` · ${conv.clipped} line${conv.clipped !== 1 ? "s" : ""} cut at paper edge`;
+      statusEl.classList.add("warn");
+    }
     if (conv.warnings.length) {
       msg += ` · ${conv.warnings.length} ${fmt.name} note${conv.warnings.length !== 1 ? "s" : ""} (hover)`;
       statusEl.title = conv.warnings.join("\n");
@@ -391,7 +397,23 @@ function updatePlotterInfo() {
 const OUTPUT_FORMATS = {
   dmpl:     { name: "DM/PL",      ext: ".dmpl", convert: (t) => convertToDmpl(t) },
   c64basic: { name: "C64 BASIC",  ext: ".bas",  convert: (t) => convertToCbm1520(t) },
+  cgp115:   { name: "CGP-115",    ext: ".cgp",  convert: (t) => convertToCgp115(t) },
 };
+
+// Radio Shack CGP-115: a plain command stream, 0.2 mm steps like the 1520.
+function convertToCgp115(text) {
+  const p = PLOTTERS[plotterSelect.value];
+  const mode = getMode();
+  const media = p.media[mediaSelect.value];
+  const spi = mode.stepsPerInch || 127;
+  const maxX = Math.round(media.across * spi) - 1;
+  return hpglToCgp115(text, {
+    maxX,
+    maxY: Math.round(media.along * spi) - 1,
+    // Roll paper: cut at the left and right edges only (0.2 mm = 8 HP-GL units).
+    clip: { x0: 0, x1: maxX * 8, y0: -Infinity, y1: Infinity },
+  });
+}
 
 // Commodore 1520: a BASIC program for a C64/VIC-20. The step range comes from
 // the selected media (plot area) size at the mode's steps per inch (0.2 mm steps).
@@ -400,9 +422,12 @@ function convertToCbm1520(text) {
   const mode = getMode();
   const media = p.media[mediaSelect.value];
   const spi = mode.stepsPerInch || 127;
+  const maxX = Math.round(media.across * spi) - 1;
   return hpglToCbm1520(text, {
-    maxX: Math.round(media.across * spi) - 1,
+    maxX,
     maxY: Math.round(media.along * spi) - 1,
+    // Roll paper: cut at the left and right edges and the 1520's ±998 step Y range.
+    clip: { x0: 0, x1: maxX * 8, y0: -998 * 8, y1: 998 * 8 },
   });
 }
 
@@ -413,11 +438,15 @@ function convertToDmpl(text) {
   const mode = getMode();
   const media = p.media[mediaSelect.value];
   const spi = mode.stepsPerInch || 200;
+  const maxX = Math.round(media.across * spi);
+  const maxY = Math.round(media.along * spi);
   return hpglToDmpl(text, {
     pens: p.pens,
     stepsPerInch: spi,
-    maxX: Math.round(media.across * spi),
-    maxY: Math.round(media.along * spi),
+    maxX,
+    maxY,
+    // Cut at the edges of the plot area (HP-GL units = steps × 1016 / steps-per-inch).
+    clip: { x0: 0, x1: maxX * IN_TO_PU / spi, y0: 0, y1: maxY * IN_TO_PU / spi },
     textStyle: mode.textStyle || "trs80",
     preamble: media.chart ? media.chart + " " : "",   // e.g. "EF" (large chart) for the DMP-41/42
     clampPens: !mode.penPause,

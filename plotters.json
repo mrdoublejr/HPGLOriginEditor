@@ -144,6 +144,27 @@
     "defaultMedia": "114 mm roll (plot 96 × 199.8 mm)"
   },
 
+  "cgp115": {
+    "name": "TRS-80 Color Graphic Printer CGP-115 (26-1192)",
+    "unitsPerMM": 40,
+    "pens": 4,
+    "defaultMode": "cgp115",
+    "margins": { "side": 0, "lead": 0, "trail": 0 },
+    "modes": {
+      "cgp115": {
+        "label": "Graphic Mode commands (0.2 mm steps)",
+        "origin": "bottom-left",
+        "allowNegative": false,
+        "output": "cgp115",
+        "stepsPerInch": 127
+      }
+    },
+    "media": {
+      "4½ in roll (plot 96 × 199.8 mm)": { "across": 3.77953, "along": 7.86614 }
+    },
+    "defaultMedia": "4½ in roll (plot 96 × 199.8 mm)"
+  },
+
   "trs80_261191": {
     "name": "TRS-80 Multi-Pen Plotter (26-1191)",
     "unitsPerMM": 40,
