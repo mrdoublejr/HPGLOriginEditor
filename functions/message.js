@@ -6,6 +6,8 @@
 // there is nothing to set up by hand.
 // Read the messages and download the files on the admin page: /admin/messages.html
 
+import { notifyLater } from "./_notify.js";
+
 const LIMITS = { topic: 40, name: 100, email: 200, plotter: 120, body: 4000, context: 300 };
 const TOPICS = ["Request a plotter", "Something isn't working", "Question", "Other"];
 const PER_HOUR = 5;                          // most messages accepted from one visitor in an hour
@@ -57,7 +59,8 @@ export async function ensureMessagesTable(db) {
   try { await db.prepare("ALTER TABLE messages ADD COLUMN files TEXT").run(); } catch (e) { /* already there */ }
 }
 
-export async function onRequestPost({ request, env }) {
+export async function onRequestPost(ctx) {
+  const { request, env } = ctx;
   try {
     if (!env.DB) {
       return json(500, { error: "The database is not connected to this site (binding DB is missing)" });
@@ -152,6 +155,17 @@ export async function onRequestPost({ request, env }) {
       await env.DB.prepare("UPDATE messages SET files = ? WHERE id = ?")
         .bind(JSON.stringify(saved), id).run();
     }
+
+    // Email the site owner (in the background; see _notify.js).
+    notifyLater(ctx, {
+      kind: "message",
+      subject: `${topic}${plotter ? ": " + plotter : ""}${files.length ? " (" + files.length + " file" + (files.length > 1 ? "s" : "") + ")" : ""}`,
+      lines: [["About", topic], ["Plotter", plotter], ["From", name || "No name given"], ["Email", email],
+              ["Files", files.map((f) => f.name).join(", ")], ["Site settings", context]],
+      body,
+      link: new URL("/admin/messages.html", request.url).href,
+      replyTo: email,
+    });
 
     return json(200, { ok: true, files: files.length });
   } catch (e) {

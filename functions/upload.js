@@ -4,6 +4,8 @@
 // The database decides what counts as a duplicate, so files in the bucket keep readable names
 // like  00007-steam-boat.plt  (a running number plus the visitor's file name).
 
+import { notifyLater } from "./_notify.js";
+
 const MAX_BYTES = 5 * 1024 * 1024;                       // biggest file accepted (5 MB)
 const ALLOWED_EXT = /\.(hpgl|plt|hpg|txt)$/i;
 // must contain at least one HPGL-looking command near the start
@@ -36,7 +38,8 @@ async function plotFingerprint(data) {
   return await sha256Hex(keep.slice(0, n));
 }
 
-export async function onRequestPost({ request, env }) {
+export async function onRequestPost(context) {
+  const { request, env } = context;
   try {
     if (!env.MY_BUCKET) {
       return json(500, { error: "The R2 bucket is not connected to this site (binding MY_BUCKET is missing)" });
@@ -115,6 +118,16 @@ export async function onRequestPost({ request, env }) {
       await env.DB.prepare("DELETE FROM uploads WHERE id = ?").bind(id).run();
       throw err;
     }
+    // Email the site owner about the new plot (in the background; see _notify.js).
+    // Duplicates of plots already stored don't send anything.
+    notifyLater(context, {
+      kind: "plot",
+      subject: `New plot: ${exactName || name}`,
+      lines: [["File", exactName || name], ["Stored as", key],
+              ["Size", (data.byteLength / 1024).toFixed(1) + " KB"], ["Received", now]],
+      link: new URL("/admin/", request.url).href,
+    });
+
     return json(200, { success: true, status: "ok", filename: key });
   } catch (error) {
     return json(500, { error: error.message });

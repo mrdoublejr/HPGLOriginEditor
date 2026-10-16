@@ -40,6 +40,7 @@
     <button id="fUnread" aria-pressed="true">Unread</button>
     <button id="fAll" aria-pressed="false">All</button>
     <button id="reload">Refresh</button>
+    <button id="testMail" title="Send one notification email to check the setup">Send test email</button>
     <span id="count" class="sub" style="margin:0"></span>
   </div>
   <p id="status">Loading…</p>
@@ -136,6 +137,14 @@
   document.getElementById("fUnread").onclick = function () { setFilter(false); };
   document.getElementById("fAll").onclick = function () { setFilter(true); };
   document.getElementById("reload").onclick = load;
+  document.getElementById("testMail").onclick = function () {
+    var b = this; b.disabled = true; status.className = ""; status.textContent = "Sending a test email…";
+    fetch("/admin/api/test-email", { method: "POST" }).then(function (r) { return r.json(); })
+      .then(function (j) {
+        status.className = j.sent ? "" : "err";
+        status.textContent = j.sent ? "Test email sent to " + j.to + ". Check your inbox." : "Not sent. " + j.reason;
+      }).catch(fail).then(function () { b.disabled = false; });
+  };
   load();
 })();
 </script>
