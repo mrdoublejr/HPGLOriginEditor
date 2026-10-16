@@ -1,4 +1,4 @@
-/* publicPlotLibrary plot explorer for the HPGL Origin Corrector.
+/* publicPlotLibrary plot explorer for Spike's Pen Plotter Tools.
    Add to index.html just before the other scripts / </body>:
      <script src="publicPlotLibrary-modal.js" defer></script>
    Drop plot files into the repo's publicPlotLibrary/ folder; they appear automatically.

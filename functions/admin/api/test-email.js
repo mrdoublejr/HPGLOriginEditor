@@ -18,7 +18,7 @@ export async function onRequestPost({ request, env }) {
       kind: "test",
       subject: "Test email",
       lines: [["What", "A test from the admin Messages page"], ["Sent", new Date().toISOString()]],
-      body: "If this landed in your PlotterCorrector folder, notifications are working.",
+      body: "If this landed in your Spike's Pen Plotter Tools folder, notifications are working.",
       link: new URL("/admin/messages.html", request.url).href,
     });
     return json(200, r.sent ? { sent: true, to: env.NOTIFY_TO }
