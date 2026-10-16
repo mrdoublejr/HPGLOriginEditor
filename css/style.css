@@ -320,9 +320,10 @@ input[type="range"] {
 .control-row .btn-primary { padding: 6px 14px; font-size: 0.85rem; }
 .ctl-download { flex-wrap: wrap; }
 
-/* Slimmer header on wide screens: title and tagline on one line */
+/* Wide screens: the plotted title centred on its own line, tagline and contact link centred under it */
 @media (min-width: 901px) {
-  header { display: flex; justify-content: center; align-items: baseline; gap: 12px; }
+  header { display: flex; flex-wrap: wrap; justify-content: center; align-items: baseline; column-gap: 12px; row-gap: 2px; }
+  header h1 { flex-basis: 100%; }
   header p { margin-top: 0; }
 }
 
@@ -357,15 +358,16 @@ input[type="range"] {
 #cFilesInfo.err { color: #c0392b; }
 
 /* ── Header title: pens plot the letter outlines ── */
-/* Every outline has its own timing below, so they plot in a jumble, each letter at its own speed, all done by about 4 s,
-   hold about 2 s, then un-plot a little faster (the line runs back into the pen) and plot again. */
+/* Every outline has its own timing below, so they plot in a jumble, each letter at its own speed,
+   all done by 4 s, hold 2 s, un-plot in 1.5 s (the line runs back into the pen), then go
+   straight back to plotting with no pause. */
 header h1 { display: inline-flex; align-items: center; flex-wrap: wrap; justify-content: center; gap: 0.3em 0.45em; }
 .spikes-plot { width: 159px; height: 43px; overflow: visible; }
 .title-plot { width: 228px; height: 26px; overflow: visible; }
 .spikes-plot path, .title-plot path {
   fill: none; stroke-linejoin: round; stroke-linecap: round;
   stroke-dasharray: 1; stroke-dashoffset: 1;
-  animation-duration: 9s; animation-timing-function: ease-in-out; animation-iteration-count: infinite;
+  animation-duration: 7.5s; animation-timing-function: ease-in-out; animation-iteration-count: infinite;
 }
 .spikes-plot path { stroke-width: 1.8; }
 .title-plot path { stroke-width: 3; }
@@ -377,38 +379,38 @@ header h1 { display: inline-flex; align-items: center; flex-wrap: wrap; justify-
 .spikes-plot .pen6 { stroke: #e07a00; }
 .spikes-plot .pen7 { stroke: #0891b2; }
 .title-plot .ink { stroke: #111; }
-@keyframes plot1 { 0%, 20.5% { stroke-dashoffset: 1; } 34%, 66.5% { stroke-dashoffset: 0; } 73.7%, 100% { stroke-dashoffset: 1; } }
-@keyframes plot2 { 0%, 15.7% { stroke-dashoffset: 1; } 29.7%, 66.3% { stroke-dashoffset: 0; } 73%, 100% { stroke-dashoffset: 1; } }
-@keyframes plot3 { 0%, 2.8% { stroke-dashoffset: 1; } 16.9%, 69% { stroke-dashoffset: 0; } 77.3%, 100% { stroke-dashoffset: 1; } }
-@keyframes plot4 { 0%, 22.4% { stroke-dashoffset: 1; } 31.7%, 72.6% { stroke-dashoffset: 0; } 79.9%, 100% { stroke-dashoffset: 1; } }
-@keyframes plot5 { 0%, 34.4% { stroke-dashoffset: 1; } 44.2%, 66.3% { stroke-dashoffset: 0; } 74.8%, 100% { stroke-dashoffset: 1; } }
-@keyframes plot6 { 0%, 3.8% { stroke-dashoffset: 1; } 16.5%, 68.2% { stroke-dashoffset: 0; } 76.4%, 100% { stroke-dashoffset: 1; } }
-@keyframes plot7 { 0%, 21.2% { stroke-dashoffset: 1; } 33%, 68.6% { stroke-dashoffset: 0; } 75.8%, 100% { stroke-dashoffset: 1; } }
-@keyframes plot8 { 0%, 2.1% { stroke-dashoffset: 1; } 12.1%, 67.4% { stroke-dashoffset: 0; } 75.2%, 100% { stroke-dashoffset: 1; } }
-@keyframes plot9 { 0%, 16.6% { stroke-dashoffset: 1; } 33.3%, 69.2% { stroke-dashoffset: 0; } 75.4%, 100% { stroke-dashoffset: 1; } }
-@keyframes plot10 { 0%, 4% { stroke-dashoffset: 1; } 32.5%, 70% { stroke-dashoffset: 0; } 77.1%, 100% { stroke-dashoffset: 1; } }
-@keyframes plot11 { 0%, 4.1% { stroke-dashoffset: 1; } 34.9%, 72.9% { stroke-dashoffset: 0; } 78.3%, 100% { stroke-dashoffset: 1; } }
-@keyframes plot12 { 0%, 12.7% { stroke-dashoffset: 1; } 40.9%, 67.1% { stroke-dashoffset: 0; } 74%, 100% { stroke-dashoffset: 1; } }
-@keyframes plot13 { 0%, 28% { stroke-dashoffset: 1; } 36.4%, 70% { stroke-dashoffset: 0; } 78.5%, 100% { stroke-dashoffset: 1; } }
-@keyframes plot14 { 0%, 26% { stroke-dashoffset: 1; } 33.6%, 70.2% { stroke-dashoffset: 0; } 77.5%, 100% { stroke-dashoffset: 1; } }
-@keyframes plot15 { 0%, 23.4% { stroke-dashoffset: 1; } 43.6%, 69.3% { stroke-dashoffset: 0; } 77%, 100% { stroke-dashoffset: 1; } }
-@keyframes plot16 { 0%, 23.3% { stroke-dashoffset: 1; } 32.3%, 73% { stroke-dashoffset: 0; } 81.2%, 100% { stroke-dashoffset: 1; } }
-@keyframes plot17 { 0%, 14.3% { stroke-dashoffset: 1; } 22.3%, 70.7% { stroke-dashoffset: 0; } 75.8%, 100% { stroke-dashoffset: 1; } }
-@keyframes plot18 { 0%, 3.3% { stroke-dashoffset: 1; } 20%, 66.4% { stroke-dashoffset: 0; } 74.5%, 100% { stroke-dashoffset: 1; } }
-@keyframes plot19 { 0%, 13.9% { stroke-dashoffset: 1; } 23.4%, 72.1% { stroke-dashoffset: 0; } 77.4%, 100% { stroke-dashoffset: 1; } }
-@keyframes plot20 { 0%, 19.2% { stroke-dashoffset: 1; } 29.3%, 72.2% { stroke-dashoffset: 0; } 80.5%, 100% { stroke-dashoffset: 1; } }
-@keyframes plot21 { 0%, 7.6% { stroke-dashoffset: 1; } 34.3%, 68.5% { stroke-dashoffset: 0; } 77%, 100% { stroke-dashoffset: 1; } }
-@keyframes plot22 { 0%, 3% { stroke-dashoffset: 1; } 30.8%, 67.6% { stroke-dashoffset: 0; } 73.6%, 100% { stroke-dashoffset: 1; } }
-@keyframes plot23 { 0%, 6.7% { stroke-dashoffset: 1; } 26.3%, 66% { stroke-dashoffset: 0; } 72.7%, 100% { stroke-dashoffset: 1; } }
-@keyframes plot24 { 0%, 15.1% { stroke-dashoffset: 1; } 33.5%, 72.7% { stroke-dashoffset: 0; } 80.4%, 100% { stroke-dashoffset: 1; } }
-@keyframes plot25 { 0%, 16.5% { stroke-dashoffset: 1; } 37.1%, 66.4% { stroke-dashoffset: 0; } 75%, 100% { stroke-dashoffset: 1; } }
-@keyframes plot26 { 0%, 12.4% { stroke-dashoffset: 1; } 41.9%, 68.7% { stroke-dashoffset: 0; } 75.3%, 100% { stroke-dashoffset: 1; } }
-@keyframes plot27 { 0%, 2.2% { stroke-dashoffset: 1; } 12.2%, 66.5% { stroke-dashoffset: 0; } 72.3%, 100% { stroke-dashoffset: 1; } }
-@keyframes plot28 { 0%, 12.4% { stroke-dashoffset: 1; } 21%, 66.4% { stroke-dashoffset: 0; } 71.4%, 100% { stroke-dashoffset: 1; } }
-@keyframes plot29 { 0%, 12.9% { stroke-dashoffset: 1; } 22.4%, 66.2% { stroke-dashoffset: 0; } 74.7%, 100% { stroke-dashoffset: 1; } }
-@keyframes plot30 { 0%, 5% { stroke-dashoffset: 1; } 16.2%, 67.8% { stroke-dashoffset: 0; } 74.2%, 100% { stroke-dashoffset: 1; } }
-@keyframes plot31 { 0%, 26.1% { stroke-dashoffset: 1; } 40.4%, 73% { stroke-dashoffset: 0; } 79.8%, 100% { stroke-dashoffset: 1; } }
-@keyframes plot32 { 0%, 2.9% { stroke-dashoffset: 1; } 19.6%, 68.4% { stroke-dashoffset: 0; } 74.5%, 100% { stroke-dashoffset: 1; } }
+@keyframes plot1 { 0%, 0% { stroke-dashoffset: 1; } 16.2%, 87.3% { stroke-dashoffset: 0; } 93.7%, 100% { stroke-dashoffset: 1; } }
+@keyframes plot2 { 0%, 18.5% { stroke-dashoffset: 1; } 35.3%, 86% { stroke-dashoffset: 0; } 92.2%, 100% { stroke-dashoffset: 1; } }
+@keyframes plot3 { 0%, 3.3% { stroke-dashoffset: 1; } 20.2%, 89.9% { stroke-dashoffset: 0; } 97.9%, 100% { stroke-dashoffset: 1; } }
+@keyframes plot4 { 0%, 26.5% { stroke-dashoffset: 1; } 37.6%, 85.5% { stroke-dashoffset: 0; } 96%, 100% { stroke-dashoffset: 1; } }
+@keyframes plot5 { 0%, 40.6% { stroke-dashoffset: 1; } 52.3%, 91.8% { stroke-dashoffset: 0; } 98.1%, 100% { stroke-dashoffset: 1; } }
+@keyframes plot6 { 0%, 4.5% { stroke-dashoffset: 1; } 19.7%, 90.2% { stroke-dashoffset: 0; } 97.7%, 100% { stroke-dashoffset: 1; } }
+@keyframes plot7 { 0%, 25% { stroke-dashoffset: 1; } 39.2%, 86.7% { stroke-dashoffset: 0; } 94.5%, 100% { stroke-dashoffset: 1; } }
+@keyframes plot8 { 0%, 2.5% { stroke-dashoffset: 1; } 14.5%, 88.9% { stroke-dashoffset: 0; } 95.8%, 100% { stroke-dashoffset: 1; } }
+@keyframes plot9 { 0%, 19.5% { stroke-dashoffset: 1; } 39.5%, 83.5% { stroke-dashoffset: 0; } 91.7%, 100% { stroke-dashoffset: 1; } }
+@keyframes plot10 { 0%, 4.7% { stroke-dashoffset: 1; } 38.8%, 85.9% { stroke-dashoffset: 0; } 94.7%, 100% { stroke-dashoffset: 1; } }
+@keyframes plot11 { 0%, 4.7% { stroke-dashoffset: 1; } 41.7%, 81.1% { stroke-dashoffset: 0; } 91.8%, 100% { stroke-dashoffset: 1; } }
+@keyframes plot12 { 0%, 14.8% { stroke-dashoffset: 1; } 48.6%, 86.5% { stroke-dashoffset: 0; } 93.2%, 100% { stroke-dashoffset: 1; } }
+@keyframes plot13 { 0%, 33.1% { stroke-dashoffset: 1; } 43.1%, 89.8% { stroke-dashoffset: 0; } 98.6%, 100% { stroke-dashoffset: 1; } }
+@keyframes plot14 { 0%, 30.8% { stroke-dashoffset: 1; } 39.8%, 86.5% { stroke-dashoffset: 0; } 95.3%, 100% { stroke-dashoffset: 1; } }
+@keyframes plot15 { 0%, 27.4% { stroke-dashoffset: 1; } 51.7%, 87.8% { stroke-dashoffset: 0; } 96.1%, 100% { stroke-dashoffset: 1; } }
+@keyframes plot16 { 0%, 27.5% { stroke-dashoffset: 1; } 38.3%, 87.6% { stroke-dashoffset: 0; } 98.4%, 100% { stroke-dashoffset: 1; } }
+@keyframes plot17 { 0%, 16.9% { stroke-dashoffset: 1; } 26.4%, 80.2% { stroke-dashoffset: 0; } 89.5%, 100% { stroke-dashoffset: 1; } }
+@keyframes plot18 { 0%, 3.9% { stroke-dashoffset: 1; } 23.9%, 90.5% { stroke-dashoffset: 0; } 96.8%, 100% { stroke-dashoffset: 1; } }
+@keyframes plot19 { 0%, 16.4% { stroke-dashoffset: 1; } 27.8%, 80.8% { stroke-dashoffset: 0; } 91%, 100% { stroke-dashoffset: 1; } }
+@keyframes plot20 { 0%, 22.6% { stroke-dashoffset: 1; } 34.7%, 88% { stroke-dashoffset: 0; } 98.2%, 100% { stroke-dashoffset: 1; } }
+@keyframes plot21 { 0%, 8.8% { stroke-dashoffset: 1; } 40.9%, 90.9% { stroke-dashoffset: 0; } 98.6%, 100% { stroke-dashoffset: 1; } }
+@keyframes plot22 { 0%, 3.5% { stroke-dashoffset: 1; } 36.8%, 83% { stroke-dashoffset: 0; } 90.1%, 100% { stroke-dashoffset: 1; } }
+@keyframes plot23 { 0%, 7.8% { stroke-dashoffset: 1; } 31.4%, 85.9% { stroke-dashoffset: 0; } 91.9%, 100% { stroke-dashoffset: 1; } }
+@keyframes plot24 { 0%, 17.7% { stroke-dashoffset: 1; } 39.7%, 86.5% { stroke-dashoffset: 0; } 97.1%, 100% { stroke-dashoffset: 1; } }
+@keyframes plot25 { 0%, 19.3% { stroke-dashoffset: 1; } 44%, 92.4% { stroke-dashoffset: 0; } 98.6%, 100% { stroke-dashoffset: 1; } }
+@keyframes plot26 { 0%, 14.3% { stroke-dashoffset: 1; } 49.7%, 84.8% { stroke-dashoffset: 0; } 92.7%, 100% { stroke-dashoffset: 1; } }
+@keyframes plot27 { 0%, 2.6% { stroke-dashoffset: 1; } 14.5%, 82.9% { stroke-dashoffset: 0; } 89.2%, 100% { stroke-dashoffset: 1; } }
+@keyframes plot28 { 0%, 14.6% { stroke-dashoffset: 1; } 24.9%, 80% { stroke-dashoffset: 0; } 86.3%, 100% { stroke-dashoffset: 1; } }
+@keyframes plot29 { 0%, 15.2% { stroke-dashoffset: 1; } 26.6%, 92.1% { stroke-dashoffset: 0; } 98.3%, 100% { stroke-dashoffset: 1; } }
+@keyframes plot30 { 0%, 5.9% { stroke-dashoffset: 1; } 19.3%, 84.4% { stroke-dashoffset: 0; } 91.7%, 100% { stroke-dashoffset: 1; } }
+@keyframes plot31 { 0%, 30.7% { stroke-dashoffset: 1; } 47.8%, 84.3% { stroke-dashoffset: 0; } 95.1%, 100% { stroke-dashoffset: 1; } }
+@keyframes plot32 { 0%, 3.4% { stroke-dashoffset: 1; } 23.5%, 92.4% { stroke-dashoffset: 0; } 100%, 100% { stroke-dashoffset: 1; } }
 @media (prefers-reduced-motion: reduce) {
   .spikes-plot path, .title-plot path { animation: none; stroke-dashoffset: 0; }
 }
