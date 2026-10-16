@@ -99,13 +99,14 @@ function renderPreview(text, plotterKey, modeKey, mediaKey, targetBox,
 
   targetBox.innerHTML = "";
   targetBox.style.minHeight = "0";
+  const shownZoom = enableDrag ? zoomLevel : 1;     // Size applies to the corrected preview only
   // One-line summary, drawn inside the canvas (top strip) so no height is lost below it.
   const infoFull =
     `${inches(media.across)} × ${inches(media.along)} in · ${Math.round(pageW)} × ${Math.round(pageH)} PU · ` +
     `${describeOrigin(origin)} · margins ${margins.side}/${margins.lead}/${margins.trail}mm · ` +
-    `plot ${Math.round(zoomLevel * 100)}%`;
+    `plot ${Math.round(shownZoom * 100)}%`;
   const infoShort =
-    `${inches(media.across)} × ${inches(media.along)} in · ${describeOrigin(origin)} · plot ${Math.round(zoomLevel * 100)}%`;
+    `${inches(media.across)} × ${inches(media.along)} in · ${describeOrigin(origin)} · plot ${Math.round(shownZoom * 100)}%`;
 
   let availW = targetBox.clientWidth;
   let availH = targetBox.clientHeight - 2;
@@ -146,7 +147,9 @@ function renderPreview(text, plotterKey, modeKey, mediaKey, targetBox,
   //   turned view:   plotter X → down the screen,  plotter Y → right (left in "top-left" mode)
   //   unturned view: plotter X → right,            plotter Y → up (down in "top-left" mode)
   const baseS = Math.min(innerW / dispW, innerH / dispH);
-  const s = baseS * zoomLevel;
+  // Size (zoom) is already applied to the corrected drawing (zoomedText scales it
+  // about its own centre), so everything here is drawn at the page scale.
+  const s = baseS;
   lastCanvasScale = s;
 
   // Screen position of the plotter origin (0,0)
@@ -223,10 +226,11 @@ function renderPreview(text, plotterKey, modeKey, mediaKey, targetBox,
   ctx.setLineDash([]);
 
   // ── Drawing (one colour per pen) ──
-  let penPaths = parsePenPaths(text);
+  const drawText = enableDrag ? zoomedText(text) : text;
+  let penPaths = parsePenPaths(drawText);
   if (penPaths.length === 0) {
     // my reader found nothing: fall back to the original single-colour reader
-    penPaths = parsePaths(text).map(pts => ({ pen: 1, pts }));
+    penPaths = parsePaths(drawText).map(pts => ({ pen: 1, pts }));
   }
 
   ctx.save();

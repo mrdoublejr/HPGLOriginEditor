@@ -116,6 +116,8 @@ function wireEvents() {
   btnZoomIn.addEventListener("click", () => setZoom(zoomLevel * (1 + ZOOM_STEP_BTN)));
   btnZoomOut.addEventListener("click", () => setZoom(zoomLevel / (1 + ZOOM_STEP_BTN)));
   btnZoomReset.addEventListener("click", () => setZoom(1.0));
+  const btnZoomFit = document.getElementById("btnZoomFit");
+  if (btnZoomFit) btnZoomFit.addEventListener("click", scaleToFit);
 
   // Wheel-to-zoom. Scoped to the whole previewCorrected box, not just the
   // <canvas> element itself — the canvas doesn't fill 100% of the box
@@ -269,12 +271,13 @@ function runCorrection() {
 }
 
 // ── What gets downloaded ────────────────────────────────────────
-// The preview draws correctedText at the Size (zoom) setting, scaled about the
-// plotter origin. The downloaded file is scaled the same way, so it matches the
-// preview exactly. At 100% the file is correctedText unchanged.
+// Size (zoom) scales the drawing about its own centre, so it grows and shrinks
+// in place on every plotter. The preview draws zoomedText(correctedText) and the
+// downloaded file uses the same text, so they always match. At 100% the file is
+// correctedText unchanged.
 function outputText() {
   if (!correctedText) return null;
-  let out = applyZoom(correctedText, zoomLevel);
+  let out = zoomedText(correctedText);
   lastNegativeClamped = 0;
   // Plotters with a converter (DM/PL, C64 BASIC, CGP-115) cut lines at the paper
   // edge during conversion instead, so the drawing keeps its shape.
@@ -288,6 +291,72 @@ function outputText() {
     });
   }
   return out;
+}
+
+// correctedText at the current Size, scaled about the centre of the drawing.
+function zoomedText(text) {
+  if (!text || Math.abs(zoomLevel - 1) < 1e-9) return text;
+  const b = getBBox(text);
+  if (!b) return applyZoom(text, zoomLevel);
+  const cx = (b.minX + b.maxX) / 2, cy = (b.minY + b.maxY) / 2;
+  return shiftPairs(applyZoom(text, zoomLevel),
+                    Math.round(cx * (1 - zoomLevel)), Math.round(cy * (1 - zoomLevel)));
+}
+
+// Moves absolute HP-GL coordinate pairs by (dx, dy). Label text, sizes, radii,
+// angles and relative moves (PR, AR, ER, RR) are left alone.
+function shiftPairs(text, dx, dy) {
+  if (!text || (dx === 0 && dy === 0)) return text;
+  const SKIP = new Set(["CI", "SI", "SR", "DI", "DR", "SP", "LT", "VS", "CT",
+                        "PR", "AR", "ER", "RR", "EW", "WG", "SC"]);
+  return text.replace(/(LB[^\x03]*\x03?)|([A-Za-z]{2})([^A-Za-z;\x03]*)/g,
+    (m, label, op, args) => {
+      if (label) return label;
+      if (SKIP.has(op.toUpperCase())) return m;
+      const nums = args.match(/-?\d+(?:\.\d+)?/g);
+      if (!nums || nums.length < 2) return m;
+      let k = 0;
+      const pairCount = Math.floor(nums.length / 2) * 2;
+      return op + args.replace(/-?\d+(?:\.\d+)?/g, (n) => {
+        const i = k++;
+        if (i >= pairCount) return n;
+        return String(Math.round(parseFloat(n) + (i % 2 === 0 ? dx : dy)));
+      });
+    });
+}
+
+// The selected plotter's plot area (inside the margins), in plotter units.
+// Same layout as the dashed red box in the preview.
+function plotAreaPU() {
+  const p = PLOTTERS[plotterSelect.value];
+  const media = p.media[mediaSelect.value];
+  const origin = getMode().origin;
+  const W = media.across * IN_TO_PU, H = media.along * IN_TO_PU;
+  const side = p.margins.side * PU_PER_MM, lead = p.margins.lead * PU_PER_MM,
+        trail = p.margins.trail * PU_PER_MM;
+  switch (origin) {
+    case "center":
+      return { x1: -W / 2 + side, x2: W / 2 - side, y1: -H / 2 + lead, y2: H / 2 - trail };
+    case "center-x-bottom-y":
+      return { x1: -W / 2 + side, x2: W / 2 - side, y1: lead, y2: H - trail };
+    default:
+      return { x1: side, x2: W - side, y1: lead, y2: H - trail };
+  }
+}
+
+// Fit: centre the drawing in the plot area and set Size so it just fills it.
+function scaleToFit() {
+  if (!correctedBaseText) return;
+  const b = getBBox(correctedBaseText);
+  if (!b) return;
+  const a = plotAreaPU();
+  const z = Math.min((a.x2 - a.x1) / Math.max(1, b.spanX),
+                     (a.y2 - a.y1) / Math.max(1, b.spanY)) * 0.98;   // 1% clear each side
+  manualOffsetX = Math.round((a.x1 + a.x2) / 2 - (b.minX + b.maxX) / 2);
+  manualOffsetY = Math.round((a.y1 + a.y2) / 2 - (b.minY + b.maxY) / 2);
+  updateOffsetDisplay();
+  correctedText = applyManualOffset(correctedBaseText);
+  setZoom(z);
 }
 
 // Scales HP-GL about the plotter origin (0,0). Coordinate pairs are scaled;
@@ -390,6 +459,84 @@ function updatePlotterInfo() {
   // turned on at the control panel; then they stop for a manual pen swap.
   if (mode.penPause) plotterInfo.textContent += " · colour changes need Pen Pause on";
   btnDownload.textContent = fmt ? `Download ${fmt.name}` : "Download HPGL";
+  showPlotterPicture(p);
+}
+
+// ── Plotter picture ──────────────────────────────────────────────
+// A plotter's optional "picture" in plotters.json is either an image (.jpg,
+// .png, .gif, .webp, .svg) shown as is, or an HP-GL file (.hpgl, .hpg, .plt)
+// drawn as a little plot. "pictureCaption" is shown under it (e.g. a photo
+// credit). Plotters without a picture hide the box.
+const PICTURE_PLOT_EXT = /\.(hpgl|hpg|plt|hgl)$/i;
+const pictureTextCache = {};
+let pictureRequest = 0;
+
+function showPlotterPicture(p) {
+  const fig = document.getElementById("plotterPicture");
+  const img = document.getElementById("plotterPictureImg");
+  const canvas = document.getElementById("plotterPictureCanvas");
+  const caption = document.getElementById("plotterPictureCaption");
+  if (!fig) return;
+  const src = p.picture;
+  const request = ++pictureRequest;
+  if (!src) { fig.hidden = true; return; }
+
+  caption.textContent = p.pictureCaption || p.name;
+  fig.hidden = false;
+
+  if (!PICTURE_PLOT_EXT.test(src)) {
+    canvas.hidden = true;
+    img.hidden = false;
+    img.alt = p.name;
+    img.onerror = () => { if (request === pictureRequest) fig.hidden = true; };
+    img.src = encodeURI(src);
+    return;
+  }
+
+  img.hidden = true;
+  canvas.hidden = false;
+  const draw = (text) => { if (request === pictureRequest) drawPicturePlot(canvas, text); };
+  if (pictureTextCache[src]) { draw(pictureTextCache[src]); return; }
+  fetch(encodeURI(src))
+    .then(r => { if (!r.ok) throw new Error(r.status); return r.text(); })
+    .then(text => { pictureTextCache[src] = text; draw(text); })
+    .catch(() => { if (request === pictureRequest) fig.hidden = true; });
+}
+
+// Draws an HP-GL file's pen-down paths, fitted to the canvas, y up.
+function drawPicturePlot(canvas, text) {
+  const paths = parsePaths(text);
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const path of paths) for (const [x, y] of path) {
+    if (x < minX) minX = x; if (x > maxX) maxX = x;
+    if (y < minY) minY = y; if (y > maxY) maxY = y;
+  }
+  const cssW = canvas.parentElement.clientWidth || 300;
+  const spanX = Math.max(1, maxX - minX), spanY = Math.max(1, maxY - minY);
+  const pad = 8;
+  const cssH = Math.min(220, Math.round((cssW - 2 * pad) * spanY / spanX) + 2 * pad);
+  const dpr = window.devicePixelRatio || 1;
+  canvas.style.width = cssW + "px";
+  canvas.style.height = cssH + "px";
+  canvas.width = Math.round(cssW * dpr);
+  canvas.height = Math.round(cssH * dpr);
+  const ctx = canvas.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, cssW, cssH);
+  if (!paths.length) return;
+  const sc = Math.min((cssW - 2 * pad) / spanX, (cssH - 2 * pad) / spanY);
+  const ox = (cssW - spanX * sc) / 2, oy = (cssH - spanY * sc) / 2;
+  ctx.strokeStyle = "#2a4fa0";
+  ctx.lineWidth = 0.8;
+  ctx.lineJoin = ctx.lineCap = "round";
+  ctx.beginPath();
+  for (const path of paths) {
+    path.forEach(([x, y], i) => {
+      const sx = ox + (x - minX) * sc, sy = cssH - oy - (y - minY) * sc;
+      if (i === 0) ctx.moveTo(sx, sy); else ctx.lineTo(sx, sy);
+    });
+  }
+  ctx.stroke();
 }
 
 // Plotters that don't take HP-GL. A mode's "output" key picks one of these;

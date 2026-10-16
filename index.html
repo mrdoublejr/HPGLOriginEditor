@@ -44,6 +44,12 @@
     <select class="plotter-select" id="hpglVersion"></select>
     <select class="plotter-select" id="mediaSelect"></select>
     <div class="plotter-info" id="plotterInfo"></div>
+    <!-- Picture of the selected plotter (plotters.json "picture"): a photo, or an HPGL plot drawn here -->
+    <figure class="plotter-picture" id="plotterPicture" hidden>
+      <img id="plotterPictureImg" alt="" hidden>
+      <canvas id="plotterPictureCanvas" hidden></canvas>
+      <figcaption id="plotterPictureCaption"></figcaption>
+    </figure>
 
     <h2 style="margin-top:16px;">Original Preview</h2>
     <div class="preview-box" id="previewOriginal">
@@ -82,6 +88,7 @@
         <input type="range" id="zoomSlider" min="10" max="1000" step="1" value="100">
         <button class="icon-btn" id="btnZoomIn" title="Enlarge">+</button>
         <span class="zoom-pct" id="zoomPercent">100%</span>
+        <button class="icon-btn subtle" id="btnZoomFit" title="Centre the drawing and scale it to fill the plot area">fit</button>
         <button class="icon-btn subtle" id="btnZoomReset" title="Reset size">reset</button>
       </div>
 
