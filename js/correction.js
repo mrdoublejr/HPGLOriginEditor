@@ -64,7 +64,25 @@ function correctHPGL(text, plotterKey, modeKey, mediaKey, rotateDeg, noClamp) {
   });
 
   result = result.replace(/SP[0-9]*;\s*$/, "").trimEnd() + "\n";
-  return { text: result, negativeClamped, scalingUnresolved: scaled.unresolved };
+
+  // A file that starts drawing without ever choosing a pen (no "SP1" etc. before its
+  // first PD) draws with no pen at all, or with pen 0, which is white on the DesignJet's
+  // default palette, so nothing shows on paper. Pick pen 1 for it right after IN.
+  const firstPD = result.search(/PD/i);
+  const before = firstPD < 0 ? result : result.slice(0, firstPD);
+  let addedPen = false;
+  if (firstPD >= 0 && !/SP\s*[1-9]/i.test(before)) {
+    const inAt = result.search(/IN\s*;/i);
+    if (inAt >= 0) {
+      const end = result.indexOf(";", inAt) + 1;
+      result = result.slice(0, end) + "SP1;" + result.slice(end);
+    } else {
+      const [pre, body] = splitPreamble(result);
+      result = pre + "SP1;" + body;
+    }
+    addedPen = true;
+  }
+  return { text: result, negativeClamped, scalingUnresolved: scaled.unresolved, addedPen };
 }
 
 // ── Manual offset (applied on top of corrected output) ───────────
