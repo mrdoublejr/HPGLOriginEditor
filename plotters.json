@@ -81,7 +81,7 @@
     "unitsPerMM": 40,
     "pens": 1,
     "defaultMode": "hpgl",
-    "margins": { "side": 5, "lead": 17, "trail": 17 },
+    "margins": { "side": 17, "lead": 5, "trail": 5 },
     "modes": {
       "hpgl": {
         "label": "HP-GL (center origin, negatives OK)",
@@ -95,18 +95,16 @@
       }
     },
     "media": {
-      "A4 (8.3 × 11.7 in)":  { "across": 8.27,  "along": 11.69 },
-      "A3 (11.7 × 16.5 in)": { "across": 11.69, "along": 16.54 },
-      "A2 (16.5 × 23.4 in)": { "across": 16.54, "along": 23.39 },
-      "A1 (23.4 × 33.1 in)": { "across": 23.39, "along": 33.11 },
-      "A0 (33.1 × 46.8 in)": { "across": 33.11, "along": 46.81 },
-      "A (8.5 × 11 in)":     { "across": 8.5,   "along": 11 },
-      "B (11 × 17 in)":      { "across": 11,    "along": 17 },
-      "C (17 × 22 in)":      { "across": 17,    "along": 22 },
-      "D (22 × 34 in)":      { "across": 22,    "along": 34 },
-      "E (34 × 44 in)":      { "across": 34,    "along": 44 }
+      "36 in roll · 24 in long": { "across": 24, "along": 36 },
+      "36 in roll · 36 in long": { "across": 36, "along": 36 },
+      "36 in roll · 48 in long": { "across": 48, "along": 36 },
+      "36 in roll · 72 in long": { "across": 72, "along": 36 },
+      "24 in roll · 24 in long": { "across": 24, "along": 24 },
+      "24 in roll · 36 in long": { "across": 36, "along": 24 },
+      "24 in roll · 48 in long": { "across": 48, "along": 24 },
+      "24 in roll · 72 in long": { "across": 72, "along": 24 }
     },
-    "defaultMedia": "D (22 × 34 in)"
+    "defaultMedia": "36 in roll · 48 in long"
   },
 
   "rolanddxy880": {
