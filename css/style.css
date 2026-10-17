@@ -414,3 +414,13 @@ header h1 { display: inline-flex; align-items: center; flex-wrap: wrap; justify-
 @media (prefers-reduced-motion: reduce) {
   .spikes-plot path, .title-plot path { animation: none; stroke-dashoffset: 0; }
 }
+
+/* ── Plot button (owner only, see js/plot.js) ── */
+.btn-plot { font: inherit; font-size: 0.85rem; padding: 6px 14px; border-radius: 6px; cursor: pointer;
+  border: 1px solid #1a7f37; background: #fff; color: #1a7f37; font-weight: 600; }
+.btn-plot:hover:not(:disabled) { background: #1a7f37; color: #fff; }
+.btn-plot:disabled { opacity: 0.5; cursor: default; }
+.plot-status { font-size: 0.8rem; color: #555; }
+.plot-status.ok { color: #1a7f37; }
+.plot-status.warn { color: #b8801a; }
+.plot-status.err { color: #c0392b; }

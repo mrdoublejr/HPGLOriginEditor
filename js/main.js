@@ -723,8 +723,10 @@ function setZoom(z) {
   }
 }
 
-function onDownload() {
-  if (!correctedText) return;
+// What Download saves (and what the Plot button sends): the corrected file at the
+// current Size and offset, converted for plotters that don't take HP-GL.
+function buildOutput() {
+  if (!correctedText) return null;
   const base = currentFile.name.replace(/\.[^.]+$/, "");
   const mode = hpglVersion.value;
 
@@ -735,11 +737,16 @@ function onDownload() {
     content = fmt.convert(content).text;
     fileName = base + "_CORRECTED_" + mode + fmt.ext;
   }
+  return { content, fileName };
+}
 
-  const blob = new Blob([content], { type: "text/plain" });
+function onDownload() {
+  const out = buildOutput();
+  if (!out) return;
+  const blob = new Blob([out.content], { type: "text/plain" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
-  a.download = fileName;
+  a.download = out.fileName;
   a.click();
   URL.revokeObjectURL(a.href);
 }

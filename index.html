@@ -184,6 +184,9 @@
 
       <div class="ctl-group ctl-download">
         <button class="btn-primary" id="btnDownload" disabled>Download HPGL</button>
+        <!-- Plot button: only shown to the site owner when signed in (js/plot.js) -->
+        <button class="btn-plot" id="btnPlot" hidden>🖨 Plot</button>
+        <span class="plot-status" id="plotStatus"></span>
         <span class="status" id="status"></span>
       </div>
 
@@ -205,6 +208,7 @@
 <script src="js/dmpl.js"></script>
 <script src="js/main.js"></script>
 <script src="js/contact.js"></script>
+<script src="js/plot.js"></script>
 <script src="js/publicPlotLibrary-modal.js" defer></script>
 
 </body>
