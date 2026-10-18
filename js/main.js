@@ -26,7 +26,8 @@ let uploadConsent = null;
 // How many coordinates the last output clamped to 0 (shown in the status line).
 let lastNegativeClamped = 0;
 let lastScalingUnresolved = false;   // file uses SC without IP (see resolveScaling)
-let lastPensMerged = 0;          // pen changes turned into pen 1 for a one-pen plotter
+let lastPensMerged = 0;
+let lastRotationCleared = 0;     // the file's own RO rotation, set back to 0 (see correctHPGL)          // pen changes turned into pen 1 for a one-pen plotter
 
 function boot() {
   try {
@@ -292,6 +293,7 @@ function runCorrection() {
     const result = correctHPGL(currentText, plotterKey, modeKey, mediaKey,
                                rotationDeg, true);
     lastScalingUnresolved = !!result.scalingUnresolved;
+    lastRotationCleared = result.rotationCleared || 0;
     correctedFullBase = (flipH || flipV)
       ? flipHPGL(result.text, flipH, flipV)
       : result.text;
@@ -482,6 +484,9 @@ function refreshStatus() {
     statusEl.classList.add("warn");
   }
 
+  if (lastRotationCleared) {
+    msg += ` · the file's own ${lastRotationCleared}° turn (RO${lastRotationCleared}) was removed: it plots as shown; use Orient to turn it`;
+  }
   if (skipPens.size) {
     const list = [...skipPens].sort((a, b) => a - b).join(", ");
     msg += penTarget === "off"
@@ -762,7 +767,7 @@ function renderPenChips() {
   if (penTargetEl) {
     const pl = PLOTTERS[plotterSelect.value];
     // pens that draw: 1..pens, or 1..pens-1 when pen 0 is a real (white) pen, as on the 750C
-    const most = Math.max((pl.pens || 1) - (pl.pen0 ? 1 : 0), ...usedPens, 1);
+    const most = Math.max((pl.pens || 1) - (pl.pen0 ? 1 : 0), 1);           // only pens this plotter has
     const opts = [];
     opts.push(`<option value="1">black (pen 1)</option>`);
     for (let n = 2; n <= most; n++) opts.push(`<option value="${n}">pen ${n}</option>`);

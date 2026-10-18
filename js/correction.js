@@ -13,6 +13,17 @@ function correctHPGL(text, plotterKey, modeKey, mediaKey, rotateDeg, noClamp) {
   const scaled = resolveScaling(text);
   text = scaled.text;
 
+  // RO (rotate the plotter's coordinate system) would turn the whole drawing on the
+  // paper behind the site's back: an RO90 file plots with X running across the short
+  // side instead of the way the preview shows it. The site does its own placing and
+  // turning (Orient), so any RO is set back to RO0 and the preview is what gets plotted.
+  let rotationCleared = 0;
+  text = text.replace(/(^|[;\n\r\s])RO\s*(-?\d+)/gi, (m, sep, deg) => {
+    if (+deg === 0) return m;
+    rotationCleared = +deg;
+    return sep + "RO0";
+  });
+
   // Centre on what the pen actually draws; a "PU0,0" park at the start or end
   // would otherwise pull the drawing off centre.
   const box = hpglExtent(text, true) || hpglExtent(text, false);
@@ -82,7 +93,7 @@ function correctHPGL(text, plotterKey, modeKey, mediaKey, rotateDeg, noClamp) {
     }
     addedPen = true;
   }
-  return { text: result, negativeClamped, scalingUnresolved: scaled.unresolved, addedPen };
+  return { text: result, negativeClamped, scalingUnresolved: scaled.unresolved, addedPen, rotationCleared };
 }
 
 // One-pen plotters (the DesignJet 750C here runs black ink only): every pen
