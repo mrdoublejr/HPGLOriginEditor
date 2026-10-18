@@ -463,3 +463,83 @@ header h1 { display: inline-flex; align-items: center; flex-wrap: wrap; justify-
 .pen-target { font-size: 0.78rem; color: #666; white-space: nowrap; }
 .pen-target select { font-size: 0.78rem; padding: 2px 4px; }
 
+/* ── Light / dark mode (switch: top-right button, js/theme.js) ─────────────
+   Dark mode recolours the page around the previews; the previews stay white
+   because they show the paper. */
+.theme-toggle {
+  position: fixed; top: 10px; right: 12px; z-index: 50;
+  width: 34px; height: 34px; border-radius: 50%;
+  border: 1px solid #d0d0d6; background: #fff; color: #333;
+  font-size: 1.05rem; line-height: 1; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+.theme-toggle:hover { border-color: #4a90d9; }
+
+html[data-theme="dark"] { color-scheme: dark; }
+html[data-theme="dark"] body { background: #15171c; color: #e3e5ea; }
+html[data-theme="dark"] header p,
+html[data-theme="dark"] .c-intro,
+html[data-theme="dark"] .c-note { color: #a3a8b3; }
+html[data-theme="dark"] .panel { background: #1e2128; border-color: #30343d; }
+html[data-theme="dark"] .panel h2 { color: #8e94a0; }
+html[data-theme="dark"] .drop-zone { border-color: #4a4f5a; color: #a3a8b3; }
+html[data-theme="dark"] .drop-zone:hover,
+html[data-theme="dark"] .drop-zone.dragover { background: #1d2a3a; border-color: #4a90d9; }
+html[data-theme="dark"] .file-info { color: #b9bec8; }
+html[data-theme="dark"] .file-info .label { color: #8e94a0; }
+html[data-theme="dark"] .preview-box { background: #252932; border-color: #353a44; color: #6f7581; }
+html[data-theme="dark"] .preview-box canvas { border-color: #353a44 !important; }
+html[data-theme="dark"] .plotter-select,
+html[data-theme="dark"] .pen-target select,
+html[data-theme="dark"] .contact-dialog input,
+html[data-theme="dark"] .contact-dialog select,
+html[data-theme="dark"] .contact-dialog textarea { background: #262a33; color: #e3e5ea; border-color: #3d424d; }
+html[data-theme="dark"] .plotter-select:disabled { background: #1f2229; color: #6f7581; }
+html[data-theme="dark"] .control-row { background: #22262e; border-color: #353a44; }
+html[data-theme="dark"] .control-label,
+html[data-theme="dark"] .zoom-pct,
+html[data-theme="dark"] .rotate-angle,
+html[data-theme="dark"] .offset-val { color: #c9cdd5; }
+html[data-theme="dark"] .ctl-download { border-top-color: #353a44; }
+html[data-theme="dark"] .icon-btn { background: #2c3039; color: #e3e5ea; border-color: #41464f; }
+html[data-theme="dark"] .icon-btn:hover { background: #363b45; border-color: #565c67; }
+html[data-theme="dark"] .icon-btn.subtle { background: transparent; border-color: transparent; color: #8e94a0; }
+html[data-theme="dark"] .icon-btn.subtle:hover { background: #2c3039; border-color: #41464f; color: #e3e5ea; }
+html[data-theme="dark"] .icon-btn.active,
+html[data-theme="dark"] .icon-btn[aria-pressed="true"] { background: #3a7bc8; border-color: #4a90d9; color: #fff; }
+html[data-theme="dark"] button.btn-primary:disabled { background: #2d3e52; border-color: #2d3e52; color: #8094aa; }
+html[data-theme="dark"] .btn-plot { background: transparent; color: #4cc274; border-color: #3aa35e; }
+html[data-theme="dark"] .btn-plot:hover:not(:disabled) { background: #1a7f37; color: #fff; }
+html[data-theme="dark"] .status,
+html[data-theme="dark"] .plot-status { color: #a3a8b3; }
+html[data-theme="dark"] .status.warn { color: #e0a84a; }
+html[data-theme="dark"] .opt-stats { color: #5cc77a; }
+html[data-theme="dark"] .opt-stats.warn { color: #e0a84a; }
+html[data-theme="dark"] .pen-chip { background: #262a33; color: #e3e5ea; border-color: #41464f; }
+html[data-theme="dark"] .pen-chip .pen-dot { border-color: rgba(255, 255, 255, 0.35); }
+html[data-theme="dark"] .pen-chip[aria-pressed="false"] { background: #1c1f25; color: #6f7581; }
+html[data-theme="dark"] .pen-chip.moved { background: #3a3220; color: #e8d9a8; border-color: #8a7330; }
+html[data-theme="dark"] .pen-target { color: #a3a8b3; }
+html[data-theme="dark"] .contact-link { color: #7fb0f0; }
+html[data-theme="dark"] .contact-dialog { background: #1e2128; color: #e3e5ea; border-color: #30343d; }
+html[data-theme="dark"] .c-opt { color: #8e94a0; }
+html[data-theme="dark"] .spikes-plot .pen1,
+html[data-theme="dark"] .title-plot .ink { stroke: #eceef2; }
+html[data-theme="dark"] .theme-toggle { background: #262a33; color: #f1c94a; border-color: #41464f; }
+/* the public plot library window (styles live in js/publicPlotLibrary-modal.js) */
+html[data-theme="dark"] #sm-dlg,
+html[data-theme="dark"] .sm-top,
+html[data-theme="dark"] #sm-body h3 { background: #1e2128; color: #e3e5ea; border-color: #30343d; }
+html[data-theme="dark"] .sm-card { background: #262a33; border-color: #353a44; }
+html[data-theme="dark"] .sm-pick { color: #e3e5ea; }
+html[data-theme="dark"] .sm-chip { background: #262a33; color: #e3e5ea; border-color: #41464f; }
+html[data-theme="dark"] .sm-chip[aria-pressed=true] { background: #4a90d9; border-color: #4a90d9; color: #fff; }
+html[data-theme="dark"] .sm-status,
+html[data-theme="dark"] .sm-name small,
+html[data-theme="dark"] .sm-th span { color: #a3a8b3; }
+
+html[data-theme="dark"] #sm-btn,
+html[data-theme="dark"] .sm-open { background: #2a5db0; color: #fff; }
+html[data-theme="dark"] #sm-btn:hover,
+html[data-theme="dark"] .sm-open:hover { background: #3a73cc; }
