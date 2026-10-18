@@ -254,7 +254,46 @@ function renderPreview(text, plotterKey, modeKey, mediaKey, targetBox,
     }
     ctx.stroke();
   }
+
+  // ── Lines drawn more than once (corrected preview only) ──
+  // Every repeat of the same line (same pen, either direction) is painted again in
+  // orange, a little wider each time, so the busiest spots stand out.
+  let repeats = 0;
+  if (enableDrag) {
+    const seen = new Map();
+    ctx.strokeStyle = "rgba(255, 120, 0, 0.45)";
+    for (const path of penPaths) {
+      const pts = path.pts;
+      for (let i = 1; i < pts.length; i++) {
+        const [ax, ay] = pts[i - 1], [bx, by] = pts[i];
+        if (ax === bx && ay === by) continue;
+        const k = path.pen + ":" + ((ax < bx || (ax === bx && ay < by))
+          ? ax + "," + ay + "," + bx + "," + by : bx + "," + by + "," + ax + "," + ay);
+        const n = (seen.get(k) || 0) + 1;
+        seen.set(k, n);
+        if (n < 2) continue;
+        repeats++;
+        ctx.lineWidth = 1 + (n - 1) * 2;
+        const [p1x, p1y] = toScreen(ax, ay, s), [p2x, p2y] = toScreen(bx, by, s);
+        ctx.beginPath(); ctx.moveTo(p1x, p1y); ctx.lineTo(p2x, p2y); ctx.stroke();
+      }
+    }
+  }
   ctx.restore();
+
+  if (repeats) {
+    ctx.save();
+    ctx.font = "11px system-ui, sans-serif";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "bottom";
+    const note = `orange: ${repeats.toLocaleString()} line${repeats === 1 ? "" : "s"} drawn more than once`;
+    const nx = page.left + 4, ny = page.top + page.h - 4;
+    ctx.fillStyle = "rgba(255, 255, 255, 0.85)";
+    ctx.fillRect(nx - 2, ny - 14, ctx.measureText(note).width + 4, 15);
+    ctx.fillStyle = "#d26a00";
+    ctx.fillText(note, nx, ny);
+    ctx.restore();
+  }
 
   // ── Origin star ──
   ctx.save();
