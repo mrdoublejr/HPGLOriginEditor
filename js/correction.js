@@ -85,6 +85,22 @@ function correctHPGL(text, plotterKey, modeKey, mediaKey, rotateDeg, noClamp) {
   return { text: result, negativeClamped, scalingUnresolved: scaled.unresolved, addedPen };
 }
 
+// One-pen plotters (the DesignJet 750C here runs black ink only): every pen
+// number above 1 becomes pen 1. Otherwise the 750C prints the file's colours as
+// colour, or as shades of grey with its front panel set to Mono, instead of black.
+// Runs after any pens have been left out (see pens.js), so single colours can
+// still be plotted one at a time in black.
+function mergeToPen1(text, plotterKey) {
+  let merged = 0;
+  if (PLOTTERS[plotterKey].pens !== 1) return { text, merged };
+  text = text.replace(/(^|[;\n\r])(\s*)SP\s*(\d+)/gi, (m, sep, sp, n) => {
+    if (+n < 2) return m;
+    merged++;
+    return sep + sp + "SP1";
+  });
+  return { text, merged };
+}
+
 // ── Manual offset (applied on top of corrected output) ───────────
 function applyManualOffset(text) {
   if (!text) return text;

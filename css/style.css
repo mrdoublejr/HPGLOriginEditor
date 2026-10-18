@@ -443,3 +443,16 @@ header h1 { display: inline-flex; align-items: center; flex-wrap: wrap; justify-
 @media (max-width: 600px) {
   .ctl-group { flex-wrap: wrap; }
 }
+
+/* Pen chips: one per pen the drawing uses; grey = left out */
+.pen-chips { display: inline-flex; gap: 4px; flex-wrap: wrap; }
+.pen-chip {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 3px 8px; font-size: 0.8rem; font-weight: 600;
+  border: 1px solid #ccc; border-radius: 12px; background: #fff; color: #333; cursor: pointer;
+}
+.pen-chip .pen-dot { width: 10px; height: 10px; border-radius: 50%; border: 1px solid rgba(0,0,0,.25); }
+.pen-chip[aria-pressed="false"] { color: #aaa; background: #f1f1f1; text-decoration: line-through; }
+.pen-chip[aria-pressed="false"] .pen-dot { opacity: .25; }
+
+.ctl-group[hidden] { display: none; }

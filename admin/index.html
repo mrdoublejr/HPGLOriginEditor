@@ -49,6 +49,7 @@
   <div class="bar tabs" role="group" aria-label="Show">
     <button id="tNew" aria-pressed="true">New</button>
     <button id="tIn" aria-pressed="false">Already in library</button>
+    <button id="tMade" aria-pressed="false" title="Files this site produced (corrected, optimized or with pens left out) that came back as uploads">Made by this site</button>
     <button id="tAll" aria-pressed="false">All</button>
   </div>
   <p id="lib"></p>
@@ -79,7 +80,10 @@
 
   function visible() {
     return rows.filter(function (r) {
-      return view === "all" || (view === "in" ? r.sameAs.length > 0 : r.sameAs.length === 0);
+      if (view === "all") return true;
+      if (view === "made") return !!r.madeBySite;
+      if (view === "in") return r.sameAs.length > 0;
+      return r.sameAs.length === 0 && !r.madeBySite;          // new = real originals not in the library
     });
   }
   function selected() {
@@ -102,11 +106,13 @@
   }
 
   function render() {
-    $("tNew").textContent = "New (" + countOf(function (r) { return r.sameAs.length === 0; }) + ")";
+    $("tNew").textContent = "New (" + countOf(function (r) { return r.sameAs.length === 0 && !r.madeBySite; }) + ")";
+    $("tMade").textContent = "Made by this site (" + countOf(function (r) { return !!r.madeBySite; }) + ")";
     $("tIn").textContent = "Already in library (" + countOf(function (r) { return r.sameAs.length > 0; }) + ")";
     $("tAll").textContent = "All (" + rows.length + ")";
-    ["tNew", "tIn", "tAll"].forEach(function (id) {
-      $(id).setAttribute("aria-pressed", String((id === "tNew" && view === "new") || (id === "tIn" && view === "in") || (id === "tAll" && view === "all")));
+    ["tNew", "tIn", "tMade", "tAll"].forEach(function (id) {
+      $(id).setAttribute("aria-pressed", String((id === "tNew" && view === "new") || (id === "tIn" && view === "in") ||
+        (id === "tMade" && view === "made") || (id === "tAll" && view === "all")));
     });
 
     var list = visible();
@@ -120,6 +126,11 @@
 
       var t = td();
       var nm = document.createElement("div"); nm.className = "name"; nm.textContent = r.exportName;
+      if (r.madeBySite) {
+        var mk = document.createElement("span"); mk.className = "tag"; mk.textContent = "made by this site, not an original";
+        mk.title = "This exact file was handed out by the site" + (r.madeBySite !== "yes" ? " as " + r.madeBySite : "");
+        nm.appendChild(mk);
+      }
       if (r.sameAs.length) {
         var ok = document.createElement("span"); ok.className = "tag ok"; ok.textContent = "same plot as " + r.sameAs.join(", ");
         nm.appendChild(ok);
@@ -176,6 +187,7 @@
   function setView(v) { view = v; render(); }
   $("tNew").addEventListener("click", function () { setView("new"); });
   $("tIn").addEventListener("click", function () { setView("in"); });
+  $("tMade").addEventListener("click", function () { setView("made"); });
   $("tAll").addEventListener("click", function () { setView("all"); });
 
   $("all").addEventListener("change", function () {

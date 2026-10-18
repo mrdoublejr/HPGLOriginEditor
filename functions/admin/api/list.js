@@ -26,6 +26,15 @@ export async function onRequestGet({ request, env }) {
     byFingerprint.get(r.fingerprint).push(r.name);
   }
 
+  // fingerprints of files this site handed out (see /functions/made.js)
+  const madeBy = new Map();
+  try {
+    const made = (await env.DB.prepare(
+      "SELECT m.fingerprint, m.name FROM made_files m JOIN uploads u ON u.fingerprint = m.fingerprint"
+    ).all()).results;
+    for (const m of made) madeBy.set(m.fingerprint, m.name);
+  } catch (e) { /* no made_files table yet: nothing has been downloaded since this was added */ }
+
   const names = exportNames(results, libLower);
   const rows = results.map((r) => {
     const same = byFingerprint.get(r.fingerprint) || [];
@@ -39,6 +48,7 @@ export async function onRequestGet({ request, env }) {
       lastSeen: r.last_seen,
       timesSeen: r.times_seen,
       sameAs: same,                                                   // library files with identical content
+      madeBySite: madeBy.has(r.fingerprint) ? (madeBy.get(r.fingerprint) || "yes") : null, // a file this site produced
       nameTaken: !same.length && libLower.has(cleanExportName(r).toLowerCase()), // same name, different plot
     };
   });

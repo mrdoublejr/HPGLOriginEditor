@@ -11,6 +11,12 @@ let showRepeats = true;        // orange/red marks on repeated lines (corrected 
 let optimizeOn = false;        // run optimizeHPGL on the corrected drawing
 let lastOptimize = null;       // result of the last optimize run, for the note
 let optCache = { key: null, result: null };
+let skipPens = new Set();      // pens left out with the pen chips
+let usedPens = [];             // pens the loaded drawing actually uses
+let lastPenWarnings = [];      // things leaving pens out could not take away
+let correctedFullBase = null;  // corrected drawing with every pen, before pens are left out
+let fullBoxCache = { key: null, box: null };
+let penChipsEl = null, penGroupEl = null;
 let flipH = false, flipV = false;
 
 // Consent checkbox — controls whether the file gets uploaded to R2.
@@ -19,6 +25,7 @@ let uploadConsent = null;
 // How many coordinates the last output clamped to 0 (shown in the status line).
 let lastNegativeClamped = 0;
 let lastScalingUnresolved = false;   // file uses SC without IP (see resolveScaling)
+let lastPensMerged = 0;          // pen changes turned into pen 1 for a one-pen plotter
 
 function boot() {
   try {
@@ -51,6 +58,8 @@ function boot() {
     btnRepeats       = document.getElementById("btnRepeats");
     btnOptimize      = document.getElementById("btnOptimize");
     optStatsEl       = document.getElementById("optStats");
+    penChipsEl       = document.getElementById("penChips");
+    penGroupEl       = document.getElementById("penGroup");
     btnFlipV         = document.getElementById("btnFlipV");
     uploadConsent    = document.getElementById("uploadConsent");
 
@@ -232,6 +241,8 @@ function loadFile(file) {
 
     correctedText = null;
     correctedBaseText = null;
+    correctedFullBase = null;
+    skipPens = new Set();
     btnDownload.disabled = true;
     statusEl.textContent = "";
     statusEl.classList.remove("warn");
@@ -271,9 +282,26 @@ function runCorrection() {
     const result = correctHPGL(currentText, plotterKey, modeKey, mediaKey,
                                rotationDeg, true);
     lastScalingUnresolved = !!result.scalingUnresolved;
-    correctedBaseText = (flipH || flipV)
+    correctedFullBase = (flipH || flipV)
       ? flipHPGL(result.text, flipH, flipV)
       : result.text;
+
+    // Pens: show a chip for each pen the drawing uses, leave out the unticked ones,
+    // then (one-pen plotters) turn the rest into pen 1. Positions come from the whole
+    // drawing, so single-colour plots still line up with each other on paper.
+    usedPens = typeof penUsage === "function" ? penUsage(correctedFullBase).pens : [];
+    for (const n of [...skipPens]) if (!usedPens.includes(n)) skipPens.delete(n);
+    if (skipPens.size && skipPens.size >= usedPens.length) skipPens.clear();   // never leave out every pen
+    renderPenChips();
+    let penText = correctedFullBase;
+    lastPenWarnings = [];
+    if (skipPens.size) {
+      const f = filterPens(penText, skipPens);
+      penText = f.text; lastPenWarnings = f.warnings;
+    }
+    const merged = mergeToPen1(penText, plotterKey);
+    lastPensMerged = merged.merged;
+    correctedBaseText = merged.text;
     // Optimize after flipping; offset, size and clamping are applied later, at output.
     // The result is kept so redrawing the same drawing doesn't run it again.
     lastOptimize = null;
@@ -341,9 +369,21 @@ function drawnBBox(text) {
 }
 
 // correctedText at the current Size, scaled about the centre of the drawing.
+// Box of the whole corrected drawing, every pen included (before any are left out),
+// so Size and Fit to page treat each single-colour plot the same way.
+function fullDrawingBox() {
+  const base = correctedFullBase || correctedBaseText;
+  if (!base) return null;
+  if (fullBoxCache.key !== base) fullBoxCache = { key: base, box: drawnBBox(base) };
+  return fullBoxCache.box;
+}
+
 function zoomedText(text) {
   if (!text || Math.abs(zoomLevel - 1) < 1e-9) return text;
-  const b = drawnBBox(text);
+  const fb = (text === correctedText && correctedFullBase) ? fullDrawingBox() : null;
+  const b = fb ? { minX: fb.minX + manualOffsetX, maxX: fb.maxX + manualOffsetX,
+                   minY: fb.minY + manualOffsetY, maxY: fb.maxY + manualOffsetY }
+               : drawnBBox(text);
   if (!b) return applyZoom(text, zoomLevel);
   const cx = (b.minX + b.maxX) / 2, cy = (b.minY + b.maxY) / 2;
   return shiftPairs(applyZoom(text, zoomLevel),
@@ -380,7 +420,7 @@ function plotAreaPU() {
 // Fit: centre the drawing in the plot area and set Size so it just fills it.
 function scaleToFit() {
   if (!correctedBaseText) return;
-  const b = drawnBBox(correctedBaseText);
+  const b = fullDrawingBox();
   if (!b) return;
   const a = plotAreaPU();
   const z = Math.min((a.x2 - a.x1) / Math.max(1, b.spanX),
@@ -426,6 +466,17 @@ function refreshStatus() {
   if ((flipH || flipV) && FLIP_UNSUPPORTED.test(correctedBaseText)) {
     msg += " · arcs/circles/other shapes not flipped";
     statusEl.classList.add("warn");
+  }
+
+  if (skipPens.size) {
+    msg += ` · pen${skipPens.size !== 1 ? "s" : ""} ${[...skipPens].sort((a, b) => a - b).join(", ")} left out`;
+  }
+  if (lastPenWarnings.length) {
+    msg += " · " + lastPenWarnings.join(" · ");
+    statusEl.classList.add("warn");
+  }
+  if (lastPensMerged) {
+    msg += ` · ${lastPensMerged} pen change${lastPensMerged !== 1 ? "s" : ""} set to pen 1 (one-pen plotter)`;
   }
 
   if (lastScalingUnresolved) {
@@ -679,6 +730,33 @@ function updateOffsetDisplay() {
   }
 }
 
+// One chip per pen the drawing uses. Ticked = plotted; click to leave a pen out.
+// Hidden when the drawing uses only one pen.
+function renderPenChips() {
+  if (!penChipsEl || !penGroupEl) return;
+  penGroupEl.hidden = usedPens.length < 2;
+  penChipsEl.textContent = "";
+  for (const n of usedPens) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "pen-chip";
+    const on = !skipPens.has(n);
+    b.setAttribute("aria-pressed", on ? "true" : "false");
+    b.title = on ? `Pen ${n} is plotted: click to leave it out` : `Pen ${n} is left out: click to plot it`;
+    const dot = document.createElement("span");
+    dot.className = "pen-dot";
+    dot.style.background = PEN_COLORS[n] || PEN_COLORS[0];
+    b.appendChild(dot);
+    b.appendChild(document.createTextNode(String(n)));
+    b.addEventListener("click", () => {
+      if (skipPens.has(n)) skipPens.delete(n);
+      else if (skipPens.size < usedPens.length - 1) skipPens.add(n);   // keep at least one pen
+      runCorrection();
+    });
+    penChipsEl.appendChild(b);
+  }
+}
+
 // The note next to the Optimize button: what it took out, or why it left the file alone.
 function showOptimizeNote() {
   if (!optStatsEl) return;
@@ -787,11 +865,13 @@ function buildOutput() {
   const mode = hpglVersion.value;
 
   let content = outputText();
-  let fileName = base + "_CORRECTED_" + mode + ".hpgl";
+  const kept = usedPens.filter((n) => !skipPens.has(n));
+  const penTag = skipPens.size ? "_PENS-" + kept.join("-") : "";
+  let fileName = base + penTag + "_CORRECTED_" + mode + ".hpgl";
   const fmt = OUTPUT_FORMATS[getMode().output];
   if (fmt) {
     content = fmt.convert(content).text;
-    fileName = base + "_CORRECTED_" + mode + fmt.ext;
+    fileName = base + penTag + "_CORRECTED_" + mode + fmt.ext;
   }
   return { content, fileName };
 }
@@ -805,6 +885,23 @@ function onDownload() {
   a.download = out.fileName;
   a.click();
   URL.revokeObjectURL(a.href);
+  registerMadeFile(new TextEncoder().encode(out.content), out.fileName);
+}
+
+// ── "Made by this site" fingerprints ─────────────────────────────
+// Every file the site hands out is fingerprinted (SHA-256 of its bytes with all
+// spacing removed: the same recipe functions/upload.js uses) and the fingerprint
+// is sent to /made. Only the fingerprint and file name are sent, never the file.
+// If that file is ever uploaded again, the admin page marks it "made by this site",
+// so corrected or stripped copies don't pass for originals.
+async function registerMadeFile(bytes, name) {
+  try {
+    const keep = bytes.filter((b) => !(b === 32 || (b >= 9 && b <= 13)));
+    const h = await crypto.subtle.digest("SHA-256", keep);
+    const fp = Array.from(new Uint8Array(h)).map((b) => b.toString(16).padStart(2, "0")).join("");
+    await fetch("/made", { method: "POST", headers: { "Content-Type": "application/json" },
+                           body: JSON.stringify({ fp, name }) });
+  } catch (e) { /* best effort: never get in the way of a download */ }
 }
 
 // ── R2 upload ───────────────────────────────────────────────────
