@@ -543,3 +543,11 @@ html[data-theme="dark"] #sm-btn,
 html[data-theme="dark"] .sm-open { background: #2a5db0; color: #fff; }
 html[data-theme="dark"] #sm-btn:hover,
 html[data-theme="dark"] .sm-open:hover { background: #3a73cc; }
+
+/* Dark mode: soften the white "paper" of the previews and library thumbnails so they
+   don't glare, and use a softer white for text and the header outlines. */
+html[data-theme="dark"] .preview-box canvas,
+html[data-theme="dark"] .sm-th { filter: brightness(0.9); }
+html[data-theme="dark"] body { color: #dadde2; }
+html[data-theme="dark"] .spikes-plot .pen1,
+html[data-theme="dark"] .title-plot .ink { stroke: #dcdfe4; }
