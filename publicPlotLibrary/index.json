@@ -13,6 +13,10 @@
       "size": 2639
     },
     {
+      "file": "publicPlotLibrary/741_opamp_schematic2.plt",
+      "size": 2639
+    },
+    {
       "file": "publicPlotLibrary/A320-A4.hpgl",
       "size": 38549
     },
@@ -97,11 +101,19 @@
       "size": 6215
     },
     {
+      "file": "publicPlotLibrary/HP_7585B_detailed_front1.hpgl",
+      "size": 6215
+    },
+    {
       "file": "publicPlotLibrary/HP_7585B_outline.hpgl",
       "size": 1787
     },
     {
       "file": "publicPlotLibrary/HP_7585B_outline1.hpgl",
+      "size": 1787
+    },
+    {
+      "file": "publicPlotLibrary/HP_7585B_outline2.hpgl",
       "size": 1787
     },
     {
@@ -146,6 +158,10 @@
     },
     {
       "file": "publicPlotLibrary/MickeyMouseCentered.hpgl",
+      "size": 22042
+    },
+    {
+      "file": "publicPlotLibrary/MickeyMouseCentered1.hpgl",
       "size": 22042
     },
     {
@@ -194,6 +210,10 @@
     },
     {
       "file": "publicPlotLibrary/SVGbull.hpgl",
+      "size": 72856
+    },
+    {
+      "file": "publicPlotLibrary/SVGbull1.hpgl",
       "size": 72856
     },
     {
