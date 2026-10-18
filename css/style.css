@@ -578,3 +578,32 @@ html[data-theme="dark"] .help-toggle { background: #262a33; border-color: #41464
 html[data-theme="dark"] .help-toggle[aria-pressed="true"] { background: #3a7bc8; color: #fff; }
 html[data-theme="dark"] .help-bubble { background: #2b2f38; color: #e3e5ea; border-color: #4a505c; }
 
+/* ── First-visit welcome message (js/welcome.js) ── */
+.welcome-dialog {
+  width: min(520px, calc(100vw - 32px));
+  margin: auto; padding: 22px 24px 18px;
+  border: 1px solid #ddd; border-radius: 12px;
+  background: #fff; color: #222;
+  box-shadow: 0 16px 50px rgba(0, 0, 0, 0.3);
+  font: 0.95rem/1.5 system-ui, sans-serif;
+}
+.welcome-dialog::backdrop { background: rgba(10, 15, 25, 0.6); }
+.welcome-dialog h2 { font-size: 1.3rem; margin-bottom: 10px; }
+.welcome-dialog p { margin-bottom: 10px; }
+.welcome-actions { display: flex; justify-content: flex-end; margin-top: 6px; }
+html[data-theme="dark"] .welcome-dialog { background: #1e2128; color: #dadde2; border-color: #30343d; }
+
+
+/* The welcome message rolled up: a small button at the top centre (js/welcome.js) */
+.welcome-pill-row { flex-basis: 100%; display: flex; justify-content: center; margin-bottom: 4px; }
+.welcome-pill {
+  font: 600 0.78rem/1 system-ui, sans-serif; padding: 5px 12px; border-radius: 999px;
+  border: 1px solid #e3d9a6; background: #fff8e1; color: #6b5a14; cursor: pointer;
+}
+.welcome-pill[hidden] { display: none; }
+.welcome-pill:hover { border-color: #c9b25a; background: #fff2c4; }
+.welcome-pill.landed { animation: pill-land 0.5s ease-out; }
+@keyframes pill-land { 0% { transform: scale(1.25); } 60% { transform: scale(0.95); } 100% { transform: scale(1); } }
+html[data-theme="dark"] .welcome-pill { background: #3a3220; color: #e8d9a8; border-color: #8a7330; }
+html[data-theme="dark"] .welcome-pill:hover { background: #4a4028; }
+@media (prefers-reduced-motion: reduce) { .welcome-pill.landed { animation: none; } }
