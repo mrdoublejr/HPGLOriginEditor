@@ -256,12 +256,12 @@ function renderPreview(text, plotterKey, modeKey, mediaKey, targetBox,
   }
 
   // ── Lines drawn more than once (corrected preview only) ──
-  // Every repeat of the same line (same pen, either direction) is painted again in
-  // orange, a little wider each time, so the busiest spots stand out.
+  // Every repeat of the same line (same pen, either direction) is painted over it,
+  // wider and redder each time (orange = twice ... deep red = 6 times or more).
   let repeats = 0;
-  if (enableDrag) {
+  if (enableDrag && (typeof showRepeats === "undefined" || showRepeats)) {
     const seen = new Map();
-    ctx.strokeStyle = "rgba(255, 120, 0, 0.45)";
+    const heat = ["#ff9800", "#ff6d00", "#f4511e", "#e53935", "#c2185b"];   // 2nd, 3rd, 4th, 5th, 6th+ time
     for (const path of penPaths) {
       const pts = path.pts;
       for (let i = 1; i < pts.length; i++) {
@@ -273,11 +273,14 @@ function renderPreview(text, plotterKey, modeKey, mediaKey, targetBox,
         seen.set(k, n);
         if (n < 2) continue;
         repeats++;
-        ctx.lineWidth = 1 + (n - 1) * 2;
+        ctx.strokeStyle = heat[Math.min(n - 2, heat.length - 1)];
+        ctx.globalAlpha = 0.85;
+        ctx.lineWidth = Math.min(12, 2.5 + (n - 2) * 2);
         const [p1x, p1y] = toScreen(ax, ay, s), [p2x, p2y] = toScreen(bx, by, s);
         ctx.beginPath(); ctx.moveTo(p1x, p1y); ctx.lineTo(p2x, p2y); ctx.stroke();
       }
     }
+    ctx.globalAlpha = 1;
   }
   ctx.restore();
 
@@ -286,7 +289,7 @@ function renderPreview(text, plotterKey, modeKey, mediaKey, targetBox,
     ctx.font = "11px system-ui, sans-serif";
     ctx.textAlign = "left";
     ctx.textBaseline = "bottom";
-    const note = `orange: ${repeats.toLocaleString()} line${repeats === 1 ? "" : "s"} drawn more than once`;
+    const note = `orange/red: ${repeats.toLocaleString()} repeat${repeats === 1 ? "" : "s"} of lines already drawn`;
     const nx = page.left + 4, ny = page.top + page.h - 4;
     ctx.fillStyle = "rgba(255, 255, 255, 0.85)";
     ctx.fillRect(nx - 2, ny - 14, ctx.measureText(note).width + 4, 15);

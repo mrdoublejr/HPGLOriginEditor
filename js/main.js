@@ -6,6 +6,11 @@ const ZOOM_LIMIT = 50;
 
 // Flip state (mirror the corrected drawing). Reset every time a file is loaded.
 let btnFlipH = null, btnFlipV = null;
+let btnRepeats = null, btnOptimize = null, optStatsEl = null;
+let showRepeats = true;        // orange/red marks on repeated lines (corrected preview)
+let optimizeOn = false;        // run optimizeHPGL on the corrected drawing
+let lastOptimize = null;       // result of the last optimize run, for the note
+let optCache = { key: null, result: null };
 let flipH = false, flipV = false;
 
 // Consent checkbox — controls whether the file gets uploaded to R2.
@@ -43,6 +48,9 @@ function boot() {
     btnZoomReset     = document.getElementById("btnZoomReset");
     btnRotatePlus    = document.getElementById("btnRotatePlus");
     btnFlipH         = document.getElementById("btnFlipH");
+    btnRepeats       = document.getElementById("btnRepeats");
+    btnOptimize      = document.getElementById("btnOptimize");
+    optStatsEl       = document.getElementById("optStats");
     btnFlipV         = document.getElementById("btnFlipV");
     uploadConsent    = document.getElementById("uploadConsent");
 
@@ -170,6 +178,17 @@ function wireEvents() {
     rotationDeg = (rotationDeg + ROTATE_STEP_DEG) % 360;
     runCorrection();
   });
+  btnRepeats.addEventListener("click", () => {
+    showRepeats = !showRepeats;
+    btnRepeats.setAttribute("aria-pressed", showRepeats ? "true" : "false");
+    if (correctedText) renderPreview(correctedText, plotterSelect.value, hpglVersion.value,
+                                     mediaSelect.value, previewCorrected, true);
+  });
+  btnOptimize.addEventListener("click", () => {
+    optimizeOn = !optimizeOn;
+    btnOptimize.setAttribute("aria-pressed", optimizeOn ? "true" : "false");
+    runCorrection();
+  });
   btnFlipH.addEventListener("click", () => {
     flipH = !flipH;
     updateFlipButtons();
@@ -255,6 +274,17 @@ function runCorrection() {
     correctedBaseText = (flipH || flipV)
       ? flipHPGL(result.text, flipH, flipV)
       : result.text;
+    // Optimize after flipping; offset, size and clamping are applied later, at output.
+    // The result is kept so redrawing the same drawing doesn't run it again.
+    lastOptimize = null;
+    if (optimizeOn && typeof optimizeHPGL === "function") {
+      if (optCache.key !== correctedBaseText) {
+        optCache = { key: correctedBaseText, result: optimizeHPGL(correctedBaseText) };
+      }
+      lastOptimize = optCache.result;
+      correctedBaseText = lastOptimize.text;
+    }
+    showOptimizeNote();
     correctedText = applyManualOffset(correctedBaseText);
 
     renderPreview(correctedText, plotterKey, modeKey, mediaKey,
@@ -647,6 +677,32 @@ function updateOffsetDisplay() {
     offsetDisplay.textContent =
       `X ${sx}${manualOffsetX}, Y ${sy}${manualOffsetY}`;
   }
+}
+
+// The note next to the Optimize button: what it took out, or why it left the file alone.
+function showOptimizeNote() {
+  if (!optStatsEl) return;
+  optStatsEl.classList.remove("warn");
+  const o = lastOptimize;
+  if (!o) { optStatsEl.textContent = ""; optStatsEl.title = ""; return; }
+  if (!o.ok) {
+    optStatsEl.textContent = "not optimized: " + o.reason;
+    optStatsEl.title = "The file is used exactly as it is.";
+    optStatsEl.classList.add("warn");
+    return;
+  }
+  const t = o.stats, f = (v) => v.toLocaleString();
+  const cut = t.dupLines + t.dots + t.nodes;
+  const travel = t.travelBefore ? Math.round(100 * (1 - t.travelAfter / t.travelBefore)) : 0;
+  optStatsEl.textContent = cut || travel > 0
+    ? `${f(cut)} moves removed · pen-up travel ${travel >= 0 ? "−" : "+"}${Math.abs(travel)}%`
+    : "nothing to remove";
+  optStatsEl.title =
+    `${f(t.dupLines)} repeated lines, ${f(t.dots)} dots on ink, ${f(t.nodes)} extra nodes on straight lines\n` +
+    `pen-down lines ${f(t.before)} → ${f(t.after)}\n` +
+    `pen lifts ${f(t.liftsBefore)} → ${f(t.liftsAfter)}\n` +
+    `pen-up travel ${f(Math.round(t.travelBefore / 400))} → ${f(Math.round(t.travelAfter / 400))} in\n` +
+    `Checked: draws exactly the same lines as the original.`;
 }
 
 function updateFlipButtons() {

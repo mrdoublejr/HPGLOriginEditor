@@ -150,7 +150,7 @@
       No corrected file yet
     </div>
 
-    <!-- Orient (rotate/flip), Size and Offset share one line (they wrap if the window is narrow) -->
+    <!-- Row 1: Orient, Size · Row 2: Offset, Paths · Row 3: Download / Plot (rows wrap if the window is narrow) -->
     <div class="control-row">
 
       <div class="ctl-group">
@@ -176,10 +176,21 @@
         <button class="icon-btn subtle" id="btnZoomReset" title="Reset size">reset</button>
       </div>
 
+      <div class="row-break"></div>
+
       <div class="ctl-group">
         <span class="control-label">Offset</span>
         <span class="offset-val" id="offsetDisplay" title="Offset in plotter units">X 0, Y 0</span>
         <button class="icon-btn subtle" id="btnResetOffset" title="Reset offset">reset</button>
+      </div>
+
+      <div class="ctl-group">
+        <span class="control-label">Paths</span>
+        <button class="icon-btn" id="btnRepeats" aria-pressed="true"
+                title="Mark lines the file draws more than once: orange = twice, redder = more">Show repeats</button>
+        <button class="icon-btn" id="btnOptimize" aria-pressed="false"
+                title="Draw each line once, drop dots on ink and extra nodes on straight lines, and take the shortest way between pieces. Checked against the original before use.">Optimize</button>
+        <span class="opt-stats" id="optStats"></span>
       </div>
 
       <div class="ctl-group ctl-download">
@@ -188,9 +199,9 @@
         <button class="btn-plot" id="btnPlot" hidden>🖨 Plot</button>
         <span class="plot-status" id="plotStatus"></span>
         <span class="status" id="status"></span>
+        <span class="hint">Drag the drawing · scroll or pinch to zoom</span>
       </div>
 
-      <span class="hint">Drag the drawing · scroll or pinch to zoom</span>
 
     </div>
 
@@ -206,6 +217,7 @@
 <script src="js/preview.js"></script>
 <script src="js/correction.js"></script>
 <script src="js/dmpl.js"></script>
+<script src="js/optimize.js"></script>
 <script src="js/main.js"></script>
 <script src="js/contact.js"></script>
 <script src="js/plot.js"></script>
