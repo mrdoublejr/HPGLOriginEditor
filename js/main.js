@@ -12,7 +12,7 @@ let optimizeOn = false;        // run optimizeHPGL on the corrected drawing
 let lastOptimize = null;       // result of the last optimize run, for the note
 let optCache = { key: null, result: null };
 let skipPens = new Set();      // pens unticked with the pen chips
-let penTarget = "1";           // where unticked pens go: a pen number, or "off" to leave them out
+let penTarget = "1";           // where switched-off pens draw: a pen number, or "off" for not at all
 let usedPens = [];             // pens the loaded drawing actually uses
 let lastPenWarnings = [];      // things leaving pens out could not take away
 let correctedFullBase = null;  // corrected drawing with every pen, before pens are left out
@@ -485,8 +485,8 @@ function refreshStatus() {
   if (skipPens.size) {
     const list = [...skipPens].sort((a, b) => a - b).join(", ");
     msg += penTarget === "off"
-      ? ` · pen${skipPens.size !== 1 ? "s" : ""} ${list} left out`
-      : ` · pen${skipPens.size !== 1 ? "s" : ""} ${list} → pen ${penTarget}`;
+      ? ` · pen${skipPens.size !== 1 ? "s" : ""} ${list} skipped`
+      : ` · pen${skipPens.size !== 1 ? "s" : ""} ${list} drawn ${penTarget === "1" ? "in black" : "with pen " + penTarget}`;
   }
   if (lastPenWarnings.length) {
     msg += " · " + lastPenWarnings.join(" · ");
@@ -764,8 +764,9 @@ function renderPenChips() {
     // pens that draw: 1..pens, or 1..pens-1 when pen 0 is a real (white) pen, as on the 750C
     const most = Math.max((pl.pens || 1) - (pl.pen0 ? 1 : 0), ...usedPens, 1);
     const opts = [];
-    for (let n = 1; n <= most; n++) opts.push(`<option value="${n}">pen ${n}${n === 1 ? " (black)" : ""}</option>`);
-    opts.push(`<option value="off">leave them out</option>`);
+    opts.push(`<option value="1">black (pen 1)</option>`);
+    for (let n = 2; n <= most; n++) opts.push(`<option value="${n}">pen ${n}</option>`);
+    opts.push(`<option value="off">nothing (skip them)</option>`);
     penTargetEl.innerHTML = opts.join("");
     if (penTarget !== "off" && +penTarget > most) penTarget = "1";
     penTargetEl.value = penTarget;
@@ -775,8 +776,8 @@ function renderPenChips() {
   if (allBtn) {
     const on = allToPen1();
     allBtn.setAttribute("aria-pressed", on ? "true" : "false");
-    allBtn.title = on ? "Every pen goes to pen 1 (black): click to plot each pen in its own colour again"
-                      : "Send every pen's lines to pen 1 (black)";
+    allBtn.title = on ? "Every pen draws in black: click to give each pen its own colour again"
+                      : "Draw every pen in black";
   }
 
   penChipsEl.textContent = "";
@@ -788,9 +789,10 @@ function renderPenChips() {
     const goes = !on && penTarget !== "off" ? +penTarget : null;      // redirected to this pen
     b.setAttribute("aria-pressed", on ? "true" : "false");
     if (goes) b.classList.add("moved");
-    b.title = on ? `Pen ${n} plots as itself: click to ${penTarget === "off" ? "leave it out" : "send its lines to pen " + penTarget}`
-                 : goes ? `Pen ${n}'s lines go to pen ${goes}: click to plot them with pen ${n} again`
-                        : `Pen ${n} is left out: click to plot it`;
+    const where = penTarget === "off" ? "skip it" : penTarget === "1" ? "draw it in black" : "draw it with pen " + penTarget;
+    b.title = on ? `Pen ${n} is on: click to switch it off (${where})`
+                 : goes ? `Pen ${n} is off and draws ${goes === 1 ? "in black" : "with pen " + goes}: click to switch it back on`
+                        : `Pen ${n} is off and skipped: click to switch it back on`;
     const dot = document.createElement("span");
     dot.className = "pen-dot";
     dot.style.background = PEN_COLORS[goes || n] || PEN_COLORS[0];
