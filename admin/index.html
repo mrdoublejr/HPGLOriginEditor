@@ -28,6 +28,8 @@
   .orig { color:var(--mute); font-size:.85rem; }
   .tag { font-size:.75rem; padding:1px 6px; border-radius:10px; border:1px solid var(--warn); color:var(--warn); margin-left:6px; }
   .num { text-align:right; }
+  .acts { margin-top:6px; display:flex; gap:6px; }
+  .acts button, .acts .btn { font-size:.82rem; padding:3px 10px; }
   .tabs { display:flex; gap:6px; flex-wrap:wrap; }
   .tabs button[aria-pressed="true"] { background:var(--accent); border-color:var(--accent); color:#fff; }
   .tag.ok { border-color:#2e9e5b; color:#2e9e5b; }
@@ -50,8 +52,8 @@
   <h1>Uploaded plots</h1>
   <p class="sub">Files visitors sent in. Download them under their own names, ready for the public library. <a href="messages.html">Messages →</a></p>
   <div class="bar">
-    <button id="zip" class="primary" disabled>Download selected as ZIP</button>
-    <button id="publish" disabled title="Put the selected plots into the public library on GitHub (one commit); the site rebuilds itself a minute or two later">Add selected to public library</button>
+    <button id="zip" disabled>Download selected as ZIP</button>
+    <button id="publish" class="primary" disabled title="Put the selected plots into the public library on GitHub (one commit); the site rebuilds itself a minute or two later">Add selected to public library</button>
     <button id="reload">Refresh</button>
     <button id="rescan" title="Read every file in publicPlotLibrary again">Rescan library</button>
     <span id="count" class="sub" style="margin:0"></span>
@@ -69,7 +71,7 @@
     <table id="tbl" hidden>
       <thead><tr>
         <th><input type="checkbox" id="all" aria-label="Select all"></th>
-        <th>Preview</th><th>Name</th><th class="num">Size</th><th class="num">Sent</th><th>First</th><th>Last</th><th></th>
+        <th>Preview</th><th>Name</th><th class="num">Size</th><th class="num">Sent</th><th>First</th><th>Last</th>
       </tr></thead>
       <tbody id="body"></tbody>
     </table>
@@ -233,13 +235,21 @@
       if (r.originalName && r.originalName !== r.exportName) {
         var o = document.createElement("div"); o.className = "orig"; o.textContent = "sent as " + r.originalName; t.appendChild(o);
       }
+      var act = document.createElement("div"); act.className = "acts";
+      if (!r.sameAs.length) {
+        var up = document.createElement("button"); up.className = "primary"; up.textContent = "Add to library";
+        up.title = "Put this plot straight into the public library on GitHub";
+        up.addEventListener("click", function () { publish([r]); });
+        act.appendChild(up); act.appendChild(document.createTextNode(" "));
+      }
+      var a = document.createElement("a"); a.className = "btn"; a.textContent = "Download";
+      a.href = "/admin/api/file?id=" + r.id; act.appendChild(a);
+      t.appendChild(act);
       td("num").textContent = fmtSize(r.size);
       td("num").textContent = r.timesSeen + "×";
       td().textContent = fmtDate(r.firstSeen);
       td().textContent = fmtDate(r.lastSeen);
 
-      var a = document.createElement("a"); a.className = "btn"; a.textContent = "Download";
-      a.href = "/admin/api/file?id=" + r.id; td().appendChild(a);
       body.appendChild(tr);
     });
     $("tbl").hidden = list.length === 0;
@@ -313,8 +323,8 @@
   $("big").addEventListener("click", function (e) { if (e.target === $("big")) $("big").close(); });
 
   function pubSay(text, cls) { var m = $("pubmsg"); m.textContent = text; m.className = cls || ""; }
-  $("publish").addEventListener("click", function () {
-    var picked = selected();
+  $("publish").addEventListener("click", function () { publish(selected()); });
+  function publish(picked) {
     if (!picked.length) return;
     var inLib = picked.filter(function (r) { return r.sameAs.length; });
     var made = picked.filter(function (r) { return r.madeBySite; });
@@ -334,7 +344,7 @@
       return load();
     }).catch(function (e) { pubSay("Could not add them: " + e.message, "err"); })
       .then(updateButtons);
-  });
+  }
 
   load().then(function () { if (!lib.needsSetup && lib.scanned < lib.total) scan(false); });
 })();
