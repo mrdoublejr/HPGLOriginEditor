@@ -551,3 +551,30 @@ html[data-theme="dark"] .sm-th { filter: brightness(0.9); }
 html[data-theme="dark"] body { color: #dadde2; }
 html[data-theme="dark"] .spikes-plot .pen1,
 html[data-theme="dark"] .title-plot .ink { stroke: #dcdfe4; }
+
+/* ── Help mode ("?" button, js/help.js) ── */
+.help-toggle {
+  position: fixed; top: 10px; right: 54px; z-index: 50;
+  width: 34px; height: 34px; border-radius: 50%;
+  border: 1px solid #d0d0d6; background: #fff; color: #2a5db0;
+  font: 700 1.05rem/1 system-ui, sans-serif; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+.help-toggle:hover { border-color: #4a90d9; }
+.help-toggle[aria-pressed="true"] { background: #4a90d9; border-color: #3a7bc8; color: #fff; }
+html.help-on, html.help-on * { cursor: help !important; }
+.help-target { outline: 2px dashed #4a90d9 !important; outline-offset: 2px; }
+.help-bubble {
+  position: fixed; z-index: 1000; max-width: 280px;
+  padding: 9px 12px; border-radius: 8px;
+  background: #fffdf3; color: #222; border: 1px solid #e3d9a6;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18);
+  font: 0.85rem/1.4 system-ui, sans-serif; pointer-events: none;
+}
+.help-bubble[hidden] { display: none; }
+.help-bubble b { display: block; margin-bottom: 3px; font-size: 0.9rem; }
+html[data-theme="dark"] .help-toggle { background: #262a33; border-color: #41464f; color: #7fb0f0; }
+html[data-theme="dark"] .help-toggle[aria-pressed="true"] { background: #3a7bc8; color: #fff; }
+html[data-theme="dark"] .help-bubble { background: #2b2f38; color: #e3e5ea; border-color: #4a505c; }
+
