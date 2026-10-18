@@ -79,7 +79,7 @@
     "picture": "images/plotters/large-inkjet.hpgl",
     "pictureCaption": "Illustration: large-format roll-fed inkjet plotter",
     "unitsPerMM": 40,
-    "pens": 1,
+    "pens": 16, "pen0": "white",
     "defaultMode": "hpgl",
     "margins": { "side": 17, "lead": 5, "trail": 5 },
     "modes": {

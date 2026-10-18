@@ -11,12 +11,13 @@ let showRepeats = true;        // orange/red marks on repeated lines (corrected 
 let optimizeOn = false;        // run optimizeHPGL on the corrected drawing
 let lastOptimize = null;       // result of the last optimize run, for the note
 let optCache = { key: null, result: null };
-let skipPens = new Set();      // pens left out with the pen chips
+let skipPens = new Set();      // pens unticked with the pen chips
+let penTarget = "1";           // where unticked pens go: a pen number, or "off" to leave them out
 let usedPens = [];             // pens the loaded drawing actually uses
 let lastPenWarnings = [];      // things leaving pens out could not take away
 let correctedFullBase = null;  // corrected drawing with every pen, before pens are left out
 let fullBoxCache = { key: null, box: null };
-let penChipsEl = null, penGroupEl = null;
+let penChipsEl = null, penGroupEl = null, penTargetEl = null;
 let flipH = false, flipV = false;
 
 // Consent checkbox — controls whether the file gets uploaded to R2.
@@ -60,6 +61,15 @@ function boot() {
     optStatsEl       = document.getElementById("optStats");
     penChipsEl       = document.getElementById("penChips");
     penGroupEl       = document.getElementById("penGroup");
+    penTargetEl      = document.getElementById("penTarget");
+    penTargetEl.addEventListener("change", () => { penTarget = penTargetEl.value; runCorrection(); });
+    document.getElementById("btnAllPen1").addEventListener("click", () => {
+      // Toggle: every pen's lines to pen 1 (black, for a colour plotter loaded with black
+      // only), or back to every pen plotting in its own colour.
+      if (allToPen1()) skipPens = new Set();
+      else { penTarget = "1"; skipPens = new Set(usedPens.filter((n) => n !== 1)); }
+      runCorrection();
+    });
     btnFlipV         = document.getElementById("btnFlipV");
     uploadConsent    = document.getElementById("uploadConsent");
 
@@ -291,13 +301,17 @@ function runCorrection() {
     // drawing, so single-colour plots still line up with each other on paper.
     usedPens = typeof penUsage === "function" ? penUsage(correctedFullBase).pens : [];
     for (const n of [...skipPens]) if (!usedPens.includes(n)) skipPens.delete(n);
-    if (skipPens.size && skipPens.size >= usedPens.length) skipPens.clear();   // never leave out every pen
+    if (penTarget === "off" && skipPens.size && skipPens.size >= usedPens.length) skipPens.clear(); // never leave out every pen
     renderPenChips();
     let penText = correctedFullBase;
     lastPenWarnings = [];
     if (skipPens.size) {
-      const f = filterPens(penText, skipPens);
-      penText = f.text; lastPenWarnings = f.warnings;
+      if (penTarget === "off") {                       // leave the unticked pens out
+        const f = filterPens(penText, skipPens);
+        penText = f.text; lastPenWarnings = f.warnings;
+      } else {                                         // send them to another pen
+        penText = remapPens(penText, skipPens, +penTarget).text;
+      }
     }
     const merged = mergeToPen1(penText, plotterKey);
     lastPensMerged = merged.merged;
@@ -469,7 +483,10 @@ function refreshStatus() {
   }
 
   if (skipPens.size) {
-    msg += ` · pen${skipPens.size !== 1 ? "s" : ""} ${[...skipPens].sort((a, b) => a - b).join(", ")} left out`;
+    const list = [...skipPens].sort((a, b) => a - b).join(", ");
+    msg += penTarget === "off"
+      ? ` · pen${skipPens.size !== 1 ? "s" : ""} ${list} left out`
+      : ` · pen${skipPens.size !== 1 ? "s" : ""} ${list} → pen ${penTarget}`;
   }
   if (lastPenWarnings.length) {
     msg += " · " + lastPenWarnings.join(" · ");
@@ -730,27 +747,58 @@ function updateOffsetDisplay() {
   }
 }
 
+// True when every pen the drawing uses is going to pen 1.
+function allToPen1() {
+  return penTarget === "1" && usedPens.length > 1 && usedPens.every((n) => n === 1 || skipPens.has(n));
+}
+
 // One chip per pen the drawing uses. Ticked = plotted; click to leave a pen out.
 // Hidden when the drawing uses only one pen.
 function renderPenChips() {
   if (!penChipsEl || !penGroupEl) return;
   penGroupEl.hidden = usedPens.length < 2;
+
+  // "Unticked pens go to": every pen this plotter has (at least the ones the file uses), or leave out
+  if (penTargetEl) {
+    const pl = PLOTTERS[plotterSelect.value];
+    // pens that draw: 1..pens, or 1..pens-1 when pen 0 is a real (white) pen, as on the 750C
+    const most = Math.max((pl.pens || 1) - (pl.pen0 ? 1 : 0), ...usedPens, 1);
+    const opts = [];
+    for (let n = 1; n <= most; n++) opts.push(`<option value="${n}">pen ${n}${n === 1 ? " (black)" : ""}</option>`);
+    opts.push(`<option value="off">leave them out</option>`);
+    penTargetEl.innerHTML = opts.join("");
+    if (penTarget !== "off" && +penTarget > most) penTarget = "1";
+    penTargetEl.value = penTarget;
+  }
+
+  const allBtn = document.getElementById("btnAllPen1");
+  if (allBtn) {
+    const on = allToPen1();
+    allBtn.setAttribute("aria-pressed", on ? "true" : "false");
+    allBtn.title = on ? "Every pen goes to pen 1 (black): click to plot each pen in its own colour again"
+                      : "Send every pen's lines to pen 1 (black)";
+  }
+
   penChipsEl.textContent = "";
   for (const n of usedPens) {
     const b = document.createElement("button");
     b.type = "button";
     b.className = "pen-chip";
     const on = !skipPens.has(n);
+    const goes = !on && penTarget !== "off" ? +penTarget : null;      // redirected to this pen
     b.setAttribute("aria-pressed", on ? "true" : "false");
-    b.title = on ? `Pen ${n} is plotted: click to leave it out` : `Pen ${n} is left out: click to plot it`;
+    if (goes) b.classList.add("moved");
+    b.title = on ? `Pen ${n} plots as itself: click to ${penTarget === "off" ? "leave it out" : "send its lines to pen " + penTarget}`
+                 : goes ? `Pen ${n}'s lines go to pen ${goes}: click to plot them with pen ${n} again`
+                        : `Pen ${n} is left out: click to plot it`;
     const dot = document.createElement("span");
     dot.className = "pen-dot";
-    dot.style.background = PEN_COLORS[n] || PEN_COLORS[0];
+    dot.style.background = PEN_COLORS[goes || n] || PEN_COLORS[0];
     b.appendChild(dot);
-    b.appendChild(document.createTextNode(String(n)));
+    b.appendChild(document.createTextNode(goes ? `${n}→${goes}` : String(n)));
     b.addEventListener("click", () => {
       if (skipPens.has(n)) skipPens.delete(n);
-      else if (skipPens.size < usedPens.length - 1) skipPens.add(n);   // keep at least one pen
+      else if (penTarget !== "off" || skipPens.size < usedPens.length - 1) skipPens.add(n);  // never leave out every pen
       runCorrection();
     });
     penChipsEl.appendChild(b);
@@ -866,7 +914,10 @@ function buildOutput() {
 
   let content = outputText();
   const kept = usedPens.filter((n) => !skipPens.has(n));
-  const penTag = skipPens.size ? "_PENS-" + kept.join("-") : "";
+  const moved = [...skipPens].sort((a, b) => a - b);
+  const penTag = !skipPens.size ? ""
+    : penTarget === "off" ? "_PENS-" + kept.join("-")              // e.g. _PENS-1-3: only pens 1 and 3
+    : "_PENS-" + moved.join("-") + "-TO-" + penTarget;             // e.g. _PENS-2-5-TO-1
   let fileName = base + penTag + "_CORRECTED_" + mode + ".hpgl";
   const fmt = OUTPUT_FORMATS[getMode().output];
   if (fmt) {

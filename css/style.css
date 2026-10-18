@@ -456,3 +456,10 @@ header h1 { display: inline-flex; align-items: center; flex-wrap: wrap; justify-
 .pen-chip[aria-pressed="false"] .pen-dot { opacity: .25; }
 
 .ctl-group[hidden] { display: none; }
+
+/* Pen chip whose lines are sent to another pen: shows "2→1" with the new pen's colour */
+.pen-chip.moved { color: #555; background: #fff8e1; border-color: #e0c060; text-decoration: none; }
+.pen-chip.moved .pen-dot { opacity: 1; }
+.pen-target { font-size: 0.78rem; color: #666; white-space: nowrap; }
+.pen-target select { font-size: 0.78rem; padding: 2px 4px; }
+

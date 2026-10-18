@@ -3,6 +3,7 @@
 //
 // penUsage(text)          -> { pens: [1, 2, 5], counts: {1: 812, 2: 40, 5: 9} }
 // filterPens(text, skip)  -> { text, warnings }   skip = Set of pen numbers to leave out
+// remapPens(text, from, to) -> { text, changed }   every SP in the Set "from" becomes SP "to"
 //
 // Leaving a pen out keeps every move (so the other pens still land in exactly the
 // same places) but nothing is drawn while that pen is selected:
@@ -111,4 +112,19 @@ function filterPens(text, skip) {
   return { text: out.join(""), warnings: [...warnings] };
 }
 
-if (typeof module !== "undefined") module.exports = { penUsage, filterPens, penTokens };
+// Sends the lines of some pens to another pen (for example everything to pen 1, black).
+// Only the pen-select commands change; every line stays exactly where it is.
+function remapPens(text, from, to) {
+  if (!from || !from.size) return { text, changed: 0 };
+  let changed = 0;
+  const out = penTokens(text).map((t) => {
+    if (t.op !== "SP") return t.raw;
+    const n = parseInt(t.args, 10);
+    if (!from.has(n) || n === to) return t.raw;
+    changed++;
+    return "SP" + to + (t.raw.endsWith(";") ? ";" : "");
+  });
+  return { text: out.join(""), changed };
+}
+
+if (typeof module !== "undefined") module.exports = { penUsage, filterPens, remapPens, penTokens };
