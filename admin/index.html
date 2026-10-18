@@ -33,6 +33,15 @@
   .tag.ok { border-color:#2e9e5b; color:#2e9e5b; }
   #lib { color:var(--mute); font-size:.85rem; margin:0 0 12px; }
   #msg { color:var(--mute); padding:14px; }
+  .thumb { width:150px; height:100px; display:block; border:1px solid var(--line); border-radius:4px; cursor:zoom-in;
+           background:linear-gradient(#eef1f4 1px,transparent 1px) 0 0/16px 16px,linear-gradient(90deg,#eef1f4 1px,transparent 1px) 0 0/16px 16px,#fff; }
+  .thumb-note { font-size:.72rem; color:var(--mute); width:150px; text-align:center; }
+  td.tcell { padding:6px 8px; }
+  #big { width:min(1000px,94vw); height:min(760px,88vh); padding:0; border:1px solid var(--line); border-radius:8px; background:#fff; }
+  #big::backdrop { background:rgba(10,15,25,.6); }
+  #big canvas { width:100%; height:100%; display:block; cursor:zoom-out; }
+  #pubmsg { font-size:.9rem; }
+  #pubmsg.err { color:#c0392b; } #pubmsg.ok { color:#2e9e5b; }
   #msg.err { color:#c0392b; }
 </style>
 </head>
@@ -42,6 +51,7 @@
   <p class="sub">Files visitors sent in. Download them under their own names, ready for the public library. <a href="messages.html">Messages →</a></p>
   <div class="bar">
     <button id="zip" class="primary" disabled>Download selected as ZIP</button>
+    <button id="publish" disabled title="Put the selected plots into the public library on GitHub (one commit); the site rebuilds itself a minute or two later">Add selected to public library</button>
     <button id="reload">Refresh</button>
     <button id="rescan" title="Read every file in publicPlotLibrary again">Rescan library</button>
     <span id="count" class="sub" style="margin:0"></span>
@@ -53,16 +63,18 @@
     <button id="tAll" aria-pressed="false">All</button>
   </div>
   <p id="lib"></p>
+  <p id="pubmsg"></p>
   <div class="card">
     <div id="msg">Loading…</div>
     <table id="tbl" hidden>
       <thead><tr>
         <th><input type="checkbox" id="all" aria-label="Select all"></th>
-        <th>Name</th><th class="num">Size</th><th class="num">Sent</th><th>First</th><th>Last</th><th></th>
+        <th>Preview</th><th>Name</th><th class="num">Size</th><th class="num">Sent</th><th>First</th><th>Last</th><th></th>
       </tr></thead>
       <tbody id="body"></tbody>
     </table>
   </div>
+  <dialog id="big"><canvas id="bigc" title="Click to close"></canvas></dialog>
 </main>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script>
@@ -70,12 +82,88 @@
   var rows = [], view = "new", lib = { total: 0, scanned: 0, needsSetup: false }, unreadable = [], scanning = false;
   var $ = function (id) { return document.getElementById(id); };
 
+  // ── thumbnails: each plot drawn small, fetched only when its row scrolls into view ──
+  var PENS = ["#14243b","#14243b","#c0392b","#1e7a46","#1f5fa8","#8e44ad","#d68910","#7f8c8d","#2c3e50"];
+  var MAX_THUMB_BYTES = 4 * 1024 * 1024, texts = {}, parsed = {};
+  function parseHPGL(text) {
+    var segs = [], pen = 1, down = false, abs = true, x = 0, y = 0;
+    text.split(/[;\n\r]+/).forEach(function (c) {
+      c = c.trim(); if (c.length < 2) return;
+      var op = c.slice(0, 2).toUpperCase(), args = c.slice(2);
+      if (op === "IN") { pen = 1; down = false; abs = true; return; }
+      if (op === "SP") { pen = parseInt(args, 10) || 0; return; }
+      if (op === "PA" || op === "PR" || op === "PU" || op === "PD") {
+        if (op === "PA") abs = true; else if (op === "PR") abs = false; else down = (op === "PD");
+        var n = args.match(/-?\d+(\.\d+)?/g) || [];
+        for (var k = 0; k + 1 < n.length; k += 2) {
+          var nx = parseFloat(n[k]), ny = parseFloat(n[k + 1]);
+          if (!abs) { nx += x; ny += y; }
+          if (down && pen > 0) segs.push([x, y, nx, ny, pen]);
+          x = nx; y = ny;
+        }
+      }
+    });
+    return segs;
+  }
+  function drawPlot(cv, segs) {
+    var dpr = window.devicePixelRatio || 1, w = cv.clientWidth, h = cv.clientHeight;
+    cv.width = w * dpr; cv.height = h * dpr;
+    var ctx = cv.getContext("2d"); ctx.scale(dpr, dpr);
+    if (!segs.length) return false;
+    var a = 1 / 0, b = 1 / 0, c = -1 / 0, d = -1 / 0;
+    segs.forEach(function (g) { a = Math.min(a, g[0], g[2]); c = Math.max(c, g[0], g[2]); b = Math.min(b, g[1], g[3]); d = Math.max(d, g[1], g[3]); });
+    var pad = 6, bw = (c - a) || 1, bh = (d - b) || 1, k = Math.min((w - 2 * pad) / bw, (h - 2 * pad) / bh),
+        ox = (w - bw * k) / 2, oy = (h - bh * k) / 2, last = -1;
+    ctx.lineWidth = 1; ctx.lineCap = "round";
+    segs.forEach(function (g) {
+      if (g[4] !== last) { if (last !== -1) ctx.stroke(); ctx.beginPath(); ctx.strokeStyle = PENS[g[4]] || PENS[0]; last = g[4]; }
+      ctx.moveTo(ox + (g[0] - a) * k, h - (oy + (g[1] - b) * k)); ctx.lineTo(ox + (g[2] - a) * k, h - (oy + (g[3] - b) * k));
+    });
+    ctx.stroke(); return true;
+  }
+  function getSegs(r) {
+    if (parsed[r.id]) return Promise.resolve(parsed[r.id]);
+    return fetch("/admin/api/file?id=" + r.id).then(function (resp) {
+      if (!resp.ok) throw new Error(resp.status);
+      return resp.text();
+    }).then(function (t) { parsed[r.id] = parseHPGL(t); return parsed[r.id]; });
+  }
+  var thumbQueue = [], thumbBusy = 0;
+  function pumpThumbs() {
+    while (thumbBusy < 4 && thumbQueue.length) {
+      var job = thumbQueue.shift(); thumbBusy++;
+      job().then(function () { thumbBusy--; pumpThumbs(); }, function () { thumbBusy--; pumpThumbs(); });
+    }
+  }
+  var thumbObserver = ("IntersectionObserver" in window) ? new IntersectionObserver(function (es) {
+    es.forEach(function (e) { if (e.isIntersecting) { thumbObserver.unobserve(e.target); thumbQueue.push(e.target._job); pumpThumbs(); } });
+  }, { rootMargin: "300px" }) : null;
+  function addThumb(td, r) {
+    td.className = "tcell";
+    var cv = document.createElement("canvas"); cv.className = "thumb"; cv.title = "Click for a bigger view";
+    var note = document.createElement("div"); note.className = "thumb-note";
+    td.appendChild(cv); td.appendChild(note);
+    if (r.size > MAX_THUMB_BYTES) { note.textContent = "too big to preview"; return; }
+    note.textContent = "…";
+    cv._job = function () {
+      return getSegs(r).then(function (segs) { note.textContent = drawPlot(cv, segs) ? "" : "nothing to draw"; })
+        .catch(function () { note.textContent = "could not read"; });
+    };
+    cv.addEventListener("click", function () {
+      getSegs(r).then(function (segs) { var d = $("big"); d.showModal(); drawPlot($("bigc"), segs); });
+    });
+    if (thumbObserver) thumbObserver.observe(cv); else { thumbQueue.push(cv._job); pumpThumbs(); }
+  }
+
   function fmtSize(n) { return n < 1024 ? n + " B" : n < 1048576 ? (n / 1024).toFixed(1) + " KB" : (n / 1048576).toFixed(1) + " MB"; }
   function fmtDate(s) { var d = new Date(s); return isNaN(d) ? "" : d.toLocaleDateString() + " " + d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }); }
   function say(text, err) { var m = $("msg"); m.textContent = text; m.className = err ? "err" : ""; m.hidden = !text; }
   function post(url, body) {
     return fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
-      .then(function (r) { if (!r.ok) throw new Error("Server said " + r.status); return r.json(); });
+      .then(function (r) {
+        if (r.ok) return r.json();
+        return r.json().catch(function () { return {}; }).then(function (j) { throw new Error(j.error || ("Server said " + r.status)); });
+      });
   }
 
   function visible() {
@@ -93,6 +181,8 @@
     var n = selected().length;
     $("zip").disabled = n === 0;
     $("zip").textContent = n ? "Download " + n + " as ZIP" : "Download selected as ZIP";
+    $("publish").disabled = n === 0;
+    $("publish").textContent = n ? "Add " + n + " to public library" : "Add selected to public library";
   }
   function countOf(fn) { return rows.filter(fn).length; }
 
@@ -123,6 +213,7 @@
 
       var c = document.createElement("input"); c.type = "checkbox"; c.id = "c" + r.id;
       c.addEventListener("change", updateButtons); td().appendChild(c);
+      addThumb(td(), r);
 
       var t = td();
       var nm = document.createElement("div"); nm.className = "name"; nm.textContent = r.exportName;
@@ -215,6 +306,33 @@
         setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
       })
       .catch(function (e) { say("ZIP failed: " + e.message, true); })
+      .then(updateButtons);
+  });
+
+  $("bigc").addEventListener("click", function () { $("big").close(); });
+  $("big").addEventListener("click", function (e) { if (e.target === $("big")) $("big").close(); });
+
+  function pubSay(text, cls) { var m = $("pubmsg"); m.textContent = text; m.className = cls || ""; }
+  $("publish").addEventListener("click", function () {
+    var picked = selected();
+    if (!picked.length) return;
+    var inLib = picked.filter(function (r) { return r.sameAs.length; });
+    var made = picked.filter(function (r) { return r.madeBySite; });
+    var list = picked.map(function (r) { return "  " + r.exportName; }).join("\n");
+    var warn = "";
+    if (inLib.length) warn += "\n\n" + inLib.length + " of them are already in the library (same plot).";
+    if (made.length) warn += "\n\n" + made.length + " of them were MADE BY THIS SITE (corrected or changed copies), not originals.";
+    if (!confirm("Add these to the public library on GitHub?\n\n" + list + warn +
+                 "\n\nThe site rebuilds itself a minute or two later. Pull in VS Code before your next push.")) return;
+    var btn = $("publish"); btn.disabled = true; btn.textContent = "Adding…";
+    pubSay("Sending to GitHub…");
+    post("/admin/api/publish", { ids: picked.map(function (r) { return r.id; }) }).then(function (j) {
+      var s = "Added " + j.added.join(", ") + " to the library.";
+      if (j.skipped && j.skipped.length) s += " Skipped " + j.skipped.length + ".";
+      s += " The site will show them after Cloudflare rebuilds (a minute or two). In VS Code, pull (Sync) before you push again.";
+      pubSay(s, "ok");
+      return load();
+    }).catch(function (e) { pubSay("Could not add them: " + e.message, "err"); })
       .then(updateButtons);
   });
 
