@@ -51,7 +51,12 @@
   .libcard .row { display:flex; justify-content:space-between; align-items:center; margin-top:6px; }
   .libcard .del { font-size:.78rem; padding:2px 8px; color:#c0392b; border-color:#e3b4ae; }
   .libcard input { position:absolute; top:12px; left:12px; z-index:1; width:18px; height:18px; }
+  .dup { position:absolute; top:12px; right:12px; z-index:1; width:22px; height:22px; border-radius:50%;
+         display:flex; align-items:center; justify-content:center; font:700 .85rem/1 system-ui,sans-serif;
+         background:#f0a020; color:#fff; box-shadow:0 1px 3px rgba(0,0,0,.25); cursor:help; }
+  .dup.same { background:#c0392b; }
   #libmsg { font-size:.9rem; } #libmsg.err { color:#c0392b; } #libmsg.ok { color:#2e9e5b; }
+  button.danger:not(:disabled) { color:#c0392b; border-color:#e3b4ae; }
   #pubmsg { font-size:.9rem; }
   #pubmsg.err { color:#c0392b; } #pubmsg.ok { color:#2e9e5b; }
   #msg.err { color:#c0392b; }
@@ -64,6 +69,7 @@
   <div class="bar">
     <button id="zip" disabled>Download selected as ZIP</button>
     <button id="publish" class="primary" disabled title="Put the selected plots into the public library on GitHub (one commit); the site rebuilds itself a minute or two later">Add selected to public library</button>
+    <button id="upDelete" class="danger" disabled title="Delete the selected uploads from storage for good">Delete selected</button>
     <button id="reload">Refresh</button>
     <button id="rescan" title="Read every file in publicPlotLibrary again">Rescan library</button>
     <span id="count" class="sub" style="margin:0"></span>
@@ -90,7 +96,8 @@
   <p class="sub">The plots in publicPlotLibrary on GitHub, as they are right now. Deleting removes the file and its
      index.json entry in one commit; the site rebuilds itself a minute or two later.</p>
   <div class="bar">
-    <button id="libDelete" disabled>Delete selected</button>
+    <label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="libAll"> Select all</label>
+    <button id="libDelete" class="danger" disabled>Delete selected</button>
     <button id="libReload">Refresh library</button>
     <span id="libCount" class="sub" style="margin:0"></span>
   </div>
@@ -143,13 +150,46 @@
     });
     ctx.stroke(); return true;
   }
-  function getSegs(r) {
+  // Each file is fetched once; the promise is shared by the thumbnail and the duplicate check.
+  var plots = {};
+  function getPlot(r) {
     var key = r.key || r.id, src = r.src || ("/admin/api/file?id=" + r.id);
-    if (parsed[key]) return Promise.resolve(parsed[key]);
-    return fetch(src).then(function (resp) {
+    if (!plots[key]) plots[key] = fetch(src).then(function (resp) {
       if (!resp.ok) throw new Error(resp.status);
       return resp.text();
-    }).then(function (t) { parsed[key] = parseHPGL(t); return parsed[key]; });
+    }).then(function (t) {
+      var segs = parseHPGL(t);
+      return { segs: segs, flat: t.replace(/\s+/g, ""), shape: shapeOf(segs) };
+    });
+    plots[key].catch(function () { delete plots[key]; });
+    return plots[key];
+  }
+  function getSegs(r) { return getPlot(r).then(function (p) { return p.segs; }); }
+
+  // "Shape": the drawing scaled to fit a 48 × 48 grid, as the set of grid squares its lines pass
+  // through. Two files whose drawings cover nearly the same squares (80% or more) look alike,
+  // even if one is moved or resized. Dense drawings with very different line counts are not compared.
+  var GRID = 48;
+  function shapeOf(segs) {
+    if (!segs.length) return null;
+    var a = 1 / 0, b = 1 / 0, c = -1 / 0, d = -1 / 0;
+    segs.forEach(function (g) { a = Math.min(a, g[0], g[2]); c = Math.max(c, g[0], g[2]); b = Math.min(b, g[1], g[3]); d = Math.max(d, g[1], g[3]); });
+    var w = (c - a) || 1, h = (d - b) || 1, sz = Math.max(w, h), cx = (a + c) / 2, cy = (b + d) / 2, cells = {}, count = 0;
+    segs.forEach(function (g) {
+      var L = Math.hypot(g[2] - g[0], g[3] - g[1]), steps = Math.max(1, Math.ceil(L / sz * GRID * 2));
+      for (var i = 0; i <= steps; i++) {
+        var t = i / steps, px = g[0] + (g[2] - g[0]) * t, py = g[1] + (g[3] - g[1]) * t;
+        var gx = Math.min(GRID - 1, Math.floor(((px - cx) / sz + 0.5) * GRID)), gy = Math.min(GRID - 1, Math.floor(((py - cy) / sz + 0.5) * GRID));
+        var k = gx * GRID + gy; if (!cells[k]) { cells[k] = 1; count++; }
+      }
+    });
+    return { cells: cells, count: count, aspect: w / h };
+  }
+  function alike(A, B) {
+    if (!A || !B) return 0;
+    if (Math.max(A.aspect, B.aspect) / Math.min(A.aspect, B.aspect) > 1.15) return 0;
+    var both = 0; for (var k in A.cells) if (B.cells[k]) both++;
+    return both / (A.count + B.count - both);
   }
   var thumbQueue = [], thumbBusy = 0;
   function pumpThumbs() {
@@ -204,6 +244,8 @@
     var n = selected().length;
     $("zip").disabled = n === 0;
     $("zip").textContent = n ? "Download " + n + " as ZIP" : "Download selected as ZIP";
+    $("upDelete").disabled = n === 0;
+    $("upDelete").textContent = n ? "Delete " + n : "Delete selected";
     $("publish").disabled = n === 0;
     $("publish").textContent = n ? "Add " + n + " to public library" : "Add selected to public library";
   }
@@ -265,6 +307,10 @@
       }
       var a = document.createElement("a"); a.className = "btn"; a.textContent = "Download";
       a.href = "/admin/api/file?id=" + r.id; act.appendChild(a);
+      var rm = document.createElement("button"); rm.className = "danger"; rm.textContent = "Delete";
+      rm.title = "Delete this upload from storage for good";
+      rm.addEventListener("click", function () { deleteUploads([r]); });
+      act.appendChild(rm);
       t.appendChild(act);
       td("num").textContent = fmtSize(r.size);
       td("num").textContent = r.timesSeen + "×";
@@ -345,6 +391,8 @@
   function libSay(text, cls) { var m = $("libmsg"); m.textContent = text; m.className = cls || ""; }
   function libButtons() {
     var n = Object.keys(libPicked).length;
+    $("libAll").checked = n > 0 && n === libFiles.length;
+    $("libAll").indeterminate = n > 0 && n < libFiles.length;
     $("libDelete").disabled = n === 0;
     $("libDelete").textContent = n ? "Delete " + n + " from library" : "Delete selected";
   }
@@ -353,6 +401,7 @@
     $("libCount").textContent = libFiles.length + " plots";
     libFiles.forEach(function (f) {
       var card = document.createElement("div"); card.className = "libcard" + (libPicked[f.name] ? " picked" : "");
+      card.dataset.name = f.name;
       var cb = document.createElement("input"); cb.type = "checkbox"; cb.checked = !!libPicked[f.name];
       cb.title = "Select";
       cb.addEventListener("change", function () {
@@ -370,6 +419,7 @@
       row.appendChild(del); card.appendChild(row);
       grid.appendChild(card);
     });
+    markDuplicates();
     libButtons();
   }
   function loadLibrary() {
@@ -379,9 +429,60 @@
         if (!r.ok) throw new Error(j.error || ("Server said " + r.status));
         return j;
       });
-    }).then(function (j) { libFiles = j.files || []; libPicked = {}; libSay(""); renderLibrary(); })
+    }).then(function (j) { libFiles = j.files || []; libPicked = {}; libSay(""); renderLibrary(); findDuplicates(); })
       .catch(function (e) { libSay("Could not load the library: " + e.message, "err"); });
   }
+  // Reads every library plot (4 at a time), then marks identical files and look-alikes.
+  var dupInfo = {};
+  function findDuplicates() {
+    dupInfo = {};
+    var files = libFiles.slice(), results = {}, i = 0, running = 0;
+    $("libCount").textContent = libFiles.length + " plots · checking for duplicates…";
+    return new Promise(function (done) {
+      function next() {
+        if (i >= files.length && running === 0) return done();
+        while (running < 4 && i < files.length) {
+          (function (f) {
+            running++;
+            var big = (f.size || 0) > MAX_THUMB_BYTES;
+            (big ? Promise.resolve(null) : getPlot({ key: "lib:" + f.name, src: f.url || ("/publicPlotLibrary/" + encodeURIComponent(f.name)) }))
+              .then(function (p) { results[f.name] = p; }, function () { results[f.name] = null; })
+              .then(function () { running--; next(); });
+          })(files[i++]);
+        }
+      }
+      next();
+    }).then(function () {
+      var names = Object.keys(results);
+      for (var x = 0; x < names.length; x++) for (var y = x + 1; y < names.length; y++) {
+        var A = results[names[x]], B = results[names[y]];
+        if (!A || !B) continue;
+        var kind = A.flat === B.flat ? "same" : (alike(A.shape, B.shape) >= 0.8 ? "alike" : null);
+        if (!kind) continue;
+        [[names[x], names[y]], [names[y], names[x]]].forEach(function (pair) {
+          var d = dupInfo[pair[0]] || (dupInfo[pair[0]] = { same: [], alike: [] });
+          d[kind].push(pair[1]);
+        });
+      }
+      var flagged = Object.keys(dupInfo).length;
+      $("libCount").textContent = libFiles.length + " plots" + (flagged ? " · " + flagged + " flagged as possible duplicates" : " · no duplicates found");
+      markDuplicates();
+    });
+  }
+  function markDuplicates() {
+    [].forEach.call(document.querySelectorAll(".libcard"), function (card) {
+      var old = card.querySelector(".dup"); if (old) old.remove();
+      var d = dupInfo[card.dataset.name]; if (!d) return;
+      var b = document.createElement("span");
+      b.className = "dup" + (d.same.length ? " same" : "");
+      b.textContent = d.same.length ? "=" : "≈";
+      b.title = (d.same.length ? "Identical file to: " + d.same.join(", ") : "") +
+                (d.same.length && d.alike.length ? "\n" : "") +
+                (d.alike.length ? "Looks like: " + d.alike.join(", ") : "");
+      card.appendChild(b);
+    });
+  }
+
   function deleteFromLibrary(names) {
     if (!names.length) return;
     if (!confirm("Delete from the public library on GitHub?\n\n" + names.map(function (n) { return "  " + n; }).join("\n") +
@@ -394,10 +495,31 @@
       libFiles = libFiles.filter(function (f) { return j.deleted.indexOf(f.name) < 0; });
       j.deleted.forEach(function (n) { delete libPicked[n]; });
       renderLibrary();
+      findDuplicates();
       return load();
     }).catch(function (e) { libSay("Could not delete: " + e.message, "err"); libButtons(); });
   }
   $("libDelete").addEventListener("click", function () { deleteFromLibrary(Object.keys(libPicked)); });
+  $("libAll").addEventListener("change", function () {
+    libPicked = {};
+    if ($("libAll").checked) libFiles.forEach(function (f) { libPicked[f.name] = true; });
+    renderLibrary();
+  });
+
+  function deleteUploads(picked) {
+    if (!picked.length) return;
+    if (!confirm("Delete " + (picked.length === 1 ? "this upload" : "these " + picked.length + " uploads") +
+                 " from storage for good?\n\n" + picked.map(function (r) { return "  " + r.exportName; }).join("\n") +
+                 "\n\nThis can't be undone. (Plots already in the public library stay there.)")) return;
+    $("upDelete").disabled = true;
+    pubSay("Deleting…");
+    post("/admin/api/delete", { ids: picked.map(function (r) { return r.id; }) }).then(function (j) {
+      pubSay("Deleted " + j.deleted + " upload" + (j.deleted === 1 ? "" : "s") + "." +
+             (j.failed && j.failed.length ? " " + j.failed.length + " could not be deleted." : ""), j.failed && j.failed.length ? "err" : "ok");
+      return load();
+    }).catch(function (e) { pubSay("Could not delete: " + e.message, "err"); }).then(updateButtons);
+  }
+  $("upDelete").addEventListener("click", function () { deleteUploads(selected()); });
   $("libReload").addEventListener("click", loadLibrary);
   loadLibrary();
 
