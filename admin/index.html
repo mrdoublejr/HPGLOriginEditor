@@ -42,6 +42,16 @@
   #big { width:min(1000px,94vw); height:min(760px,88vh); padding:0; border:1px solid var(--line); border-radius:8px; background:#fff; }
   #big::backdrop { background:rgba(10,15,25,.6); }
   #big canvas { width:100%; height:100%; display:block; cursor:zoom-out; }
+  .libgrid { display:grid; grid-template-columns:repeat(auto-fill,minmax(170px,1fr)); gap:10px; }
+  .libcard { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:8px; position:relative; }
+  .libcard.picked { border-color:var(--accent); box-shadow:0 0 0 2px var(--accent); }
+  .libcard .thumb { width:100%; }
+  .libcard .nm { font-weight:600; font-size:.85rem; margin-top:6px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .libcard .sz { color:var(--mute); font-size:.75rem; }
+  .libcard .row { display:flex; justify-content:space-between; align-items:center; margin-top:6px; }
+  .libcard .del { font-size:.78rem; padding:2px 8px; color:#c0392b; border-color:#e3b4ae; }
+  .libcard input { position:absolute; top:12px; left:12px; z-index:1; width:18px; height:18px; }
+  #libmsg { font-size:.9rem; } #libmsg.err { color:#c0392b; } #libmsg.ok { color:#2e9e5b; }
   #pubmsg { font-size:.9rem; }
   #pubmsg.err { color:#c0392b; } #pubmsg.ok { color:#2e9e5b; }
   #msg.err { color:#c0392b; }
@@ -76,6 +86,16 @@
       <tbody id="body"></tbody>
     </table>
   </div>
+  <h1 style="margin-top:28px">Public library</h1>
+  <p class="sub">The plots in publicPlotLibrary on GitHub, as they are right now. Deleting removes the file and its
+     index.json entry in one commit; the site rebuilds itself a minute or two later.</p>
+  <div class="bar">
+    <button id="libDelete" disabled>Delete selected</button>
+    <button id="libReload">Refresh library</button>
+    <span id="libCount" class="sub" style="margin:0"></span>
+  </div>
+  <p id="libmsg"></p>
+  <div id="libGrid" class="libgrid"></div>
   <dialog id="big"><canvas id="bigc" title="Click to close"></canvas></dialog>
 </main>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
@@ -124,11 +144,12 @@
     ctx.stroke(); return true;
   }
   function getSegs(r) {
-    if (parsed[r.id]) return Promise.resolve(parsed[r.id]);
-    return fetch("/admin/api/file?id=" + r.id).then(function (resp) {
+    var key = r.key || r.id, src = r.src || ("/admin/api/file?id=" + r.id);
+    if (parsed[key]) return Promise.resolve(parsed[key]);
+    return fetch(src).then(function (resp) {
       if (!resp.ok) throw new Error(resp.status);
       return resp.text();
-    }).then(function (t) { parsed[r.id] = parseHPGL(t); return parsed[r.id]; });
+    }).then(function (t) { parsed[key] = parseHPGL(t); return parsed[key]; });
   }
   var thumbQueue = [], thumbBusy = 0;
   function pumpThumbs() {
@@ -145,7 +166,7 @@
     var cv = document.createElement("canvas"); cv.className = "thumb"; cv.title = "Click for a bigger view";
     var note = document.createElement("div"); note.className = "thumb-note";
     td.appendChild(cv); td.appendChild(note);
-    if (r.size > MAX_THUMB_BYTES) { note.textContent = "too big to preview"; return; }
+    if ((r.size || 0) > MAX_THUMB_BYTES) { note.textContent = "too big to preview"; return; }
     note.textContent = "…";
     cv._job = function () {
       return getSegs(r).then(function (segs) { note.textContent = drawPlot(cv, segs) ? "" : "nothing to draw"; })
@@ -215,7 +236,7 @@
 
       var c = document.createElement("input"); c.type = "checkbox"; c.id = "c" + r.id;
       c.addEventListener("change", updateButtons); td().appendChild(c);
-      addThumb(td(), r);
+      addThumb(td(), { key: "u" + r.id, id: r.id, size: r.size });
 
       var t = td();
       var nm = document.createElement("div"); nm.className = "name"; nm.textContent = r.exportName;
@@ -319,6 +340,67 @@
       .then(updateButtons);
   });
 
+  // ── public library on GitHub ──
+  var libFiles = [], libPicked = {};
+  function libSay(text, cls) { var m = $("libmsg"); m.textContent = text; m.className = cls || ""; }
+  function libButtons() {
+    var n = Object.keys(libPicked).length;
+    $("libDelete").disabled = n === 0;
+    $("libDelete").textContent = n ? "Delete " + n + " from library" : "Delete selected";
+  }
+  function renderLibrary() {
+    var grid = $("libGrid"); grid.textContent = "";
+    $("libCount").textContent = libFiles.length + " plots";
+    libFiles.forEach(function (f) {
+      var card = document.createElement("div"); card.className = "libcard" + (libPicked[f.name] ? " picked" : "");
+      var cb = document.createElement("input"); cb.type = "checkbox"; cb.checked = !!libPicked[f.name];
+      cb.title = "Select";
+      cb.addEventListener("change", function () {
+        if (cb.checked) libPicked[f.name] = true; else delete libPicked[f.name];
+        card.classList.toggle("picked", cb.checked); libButtons();
+      });
+      card.appendChild(cb);
+      var holder = document.createElement("div"); card.appendChild(holder);
+      addThumb(holder, { key: "lib:" + f.name, src: f.url || ("/publicPlotLibrary/" + encodeURIComponent(f.name)), size: f.size });
+      var nm = document.createElement("div"); nm.className = "nm"; nm.textContent = f.name; nm.title = f.name; card.appendChild(nm);
+      var row = document.createElement("div"); row.className = "row";
+      var sz = document.createElement("span"); sz.className = "sz"; sz.textContent = fmtSize(f.size); row.appendChild(sz);
+      var del = document.createElement("button"); del.className = "del"; del.textContent = "Delete";
+      del.addEventListener("click", function () { deleteFromLibrary([f.name]); });
+      row.appendChild(del); card.appendChild(row);
+      grid.appendChild(card);
+    });
+    libButtons();
+  }
+  function loadLibrary() {
+    libSay("Loading the library from GitHub…");
+    return fetch("/admin/api/library", { cache: "no-store" }).then(function (r) {
+      return r.json().catch(function () { return {}; }).then(function (j) {
+        if (!r.ok) throw new Error(j.error || ("Server said " + r.status));
+        return j;
+      });
+    }).then(function (j) { libFiles = j.files || []; libPicked = {}; libSay(""); renderLibrary(); })
+      .catch(function (e) { libSay("Could not load the library: " + e.message, "err"); });
+  }
+  function deleteFromLibrary(names) {
+    if (!names.length) return;
+    if (!confirm("Delete from the public library on GitHub?\n\n" + names.map(function (n) { return "  " + n; }).join("\n") +
+                 "\n\nThis removes the file(s) and their index.json entries. GitHub keeps the history, so a file can be brought back later if needed." +
+                 "\n\nPull in VS Code before your next push.")) return;
+    $("libDelete").disabled = true;
+    libSay("Deleting on GitHub…");
+    post("/admin/api/library", { "delete": names }).then(function (j) {
+      libSay("Deleted " + j.deleted.join(", ") + ". The site will drop them after Cloudflare rebuilds (a minute or two). In VS Code, pull (Sync) before you push again.", "ok");
+      libFiles = libFiles.filter(function (f) { return j.deleted.indexOf(f.name) < 0; });
+      j.deleted.forEach(function (n) { delete libPicked[n]; });
+      renderLibrary();
+      return load();
+    }).catch(function (e) { libSay("Could not delete: " + e.message, "err"); libButtons(); });
+  }
+  $("libDelete").addEventListener("click", function () { deleteFromLibrary(Object.keys(libPicked)); });
+  $("libReload").addEventListener("click", loadLibrary);
+  loadLibrary();
+
   $("bigc").addEventListener("click", function () { $("big").close(); });
   $("big").addEventListener("click", function (e) { if (e.target === $("big")) $("big").close(); });
 
@@ -337,10 +419,13 @@
     var btn = $("publish"); btn.disabled = true; btn.textContent = "Adding…";
     pubSay("Sending to GitHub…");
     post("/admin/api/publish", { ids: picked.map(function (r) { return r.id; }) }).then(function (j) {
-      var s = "Added " + j.added.join(", ") + " to the library.";
+      var s = "Added " + j.added.join(", ") + " to the library" +
+              (j.removed ? " and removed " + (j.removed === 1 ? "it" : "them") + " from upload storage." : ".");
+      if (j.keptInBucket && j.keptInBucket.length) s += " (Could not clear from storage: " + j.keptInBucket.join(", ") + ".)";
       if (j.skipped && j.skipped.length) s += " Skipped " + j.skipped.length + ".";
       s += " The site will show them after Cloudflare rebuilds (a minute or two). In VS Code, pull (Sync) before you push again.";
       pubSay(s, "ok");
+      loadLibrary();
       return load();
     }).catch(function (e) { pubSay("Could not add them: " + e.message, "err"); })
       .then(updateButtons);
