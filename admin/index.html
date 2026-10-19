@@ -69,7 +69,7 @@
   <div class="bar">
     <button id="zip" disabled>Download selected as ZIP</button>
     <button id="publish" class="primary" disabled title="Put the selected plots into the public library on GitHub (one commit); the site rebuilds itself a minute or two later">Add selected to public library</button>
-    <button id="upDelete" class="danger" disabled title="Delete the selected uploads from storage for good">Delete selected</button>
+    <button id="upDelete" class="danger" disabled title="Delete the selected files from storage; their database records are always kept">Delete selected</button>
     <button id="reload">Refresh</button>
     <button id="rescan" title="Read every file in publicPlotLibrary again">Rescan library</button>
     <span id="count" class="sub" style="margin:0"></span>
@@ -244,10 +244,15 @@
     var n = selected().length;
     $("zip").disabled = n === 0;
     $("zip").textContent = n ? "Download " + n + " as ZIP" : "Download selected as ZIP";
-    $("upDelete").disabled = n === 0;
-    $("upDelete").textContent = n ? "Delete " + n : "Delete selected";
-    $("publish").disabled = n === 0;
-    $("publish").textContent = n ? "Add " + n + " to public library" : "Add selected to public library";
+    // records are never deleted, so only rows that still have a file count
+    var d = selected().filter(function (r) { return r.hasFile !== false; }).length;
+    $("upDelete").disabled = d === 0;
+    $("upDelete").textContent = d ? "Delete " + d + " file" + (d === 1 ? "" : "s") : "Delete selected";
+    // only plots that are new and still have their file can go to the library
+    var p = selected().filter(function (r) { return !r.sameAs.length && r.hasFile !== false; }).length;
+    $("publish").disabled = p === 0;
+    $("publish").textContent = p ? "Add " + p + " to public library"
+      : (n ? "Already in library" : "Add selected to public library");
   }
   function countOf(fn) { return rows.filter(fn).length; }
 
@@ -315,10 +320,12 @@
       var a = document.createElement("a"); a.className = "btn"; a.textContent = "Download";
       a.href = r.hasFile === false && r.sameAs.length ? "/publicPlotLibrary/" + encodeURIComponent(r.sameAs[0]) : "/admin/api/file?id=" + r.id;
       if (r.hasFile !== false || r.sameAs.length) act.appendChild(a);
-      var rm = document.createElement("button"); rm.className = "danger"; rm.textContent = "Delete";
-      rm.title = r.hasFile === false ? "Delete this record from the database" : "Delete this upload (file and record) for good";
-      rm.addEventListener("click", function () { deleteUploads([r]); });
-      act.appendChild(rm);
+      if (r.hasFile !== false) {                       // no file left: nothing to delete, the record stays
+        var rm = document.createElement("button"); rm.className = "danger"; rm.textContent = "Delete";
+        rm.title = "Delete this file from storage (the database record is kept)";
+        rm.addEventListener("click", function () { deleteUploads([r]); });
+        act.appendChild(rm);
+      }
       t.appendChild(act);
       td("num").textContent = fmtSize(r.size);
       td("num").textContent = r.timesSeen + "×";
@@ -530,14 +537,16 @@
   });
 
   function deleteUploads(picked) {
+    picked = picked.filter(function (r) { return r.hasFile !== false; });
     if (!picked.length) return;
-    if (!confirm("Delete " + (picked.length === 1 ? "this upload" : "these " + picked.length + " uploads") +
-                 " for good (file and database record)?\n\n" + picked.map(function (r) { return "  " + r.exportName; }).join("\n") +
-                 "\n\nThis can't be undone. (Plots already in the public library stay there.)")) return;
+    if (!confirm("Delete " + (picked.length === 1 ? "this file" : "these " + picked.length + " files") +
+                 " from storage?\n\n" + picked.map(function (r) { return "  " + r.exportName; }).join("\n") +
+                 "\n\nThe database records are kept (name, dates, times sent). The files can't be brought back." +
+                 " (Plots already in the public library stay there.)")) return;
     $("upDelete").disabled = true;
     pubSay("Deleting…");
-    post("/admin/api/delete", { ids: picked.map(function (r) { return r.id; }) }).then(function (j) {
-      pubSay("Deleted " + j.deleted + " upload" + (j.deleted === 1 ? "" : "s") + "." +
+    post("/admin/api/delete", { ids: picked.map(function (r) { return r.id; }), fileOnly: true }).then(function (j) {
+      pubSay("Deleted " + j.deleted + " file" + (j.deleted === 1 ? "" : "s") + " (records kept)." +
              (j.failed && j.failed.length ? " " + j.failed.length + " could not be deleted." : ""), j.failed && j.failed.length ? "err" : "ok");
       return load();
     }).catch(function (e) { pubSay("Could not delete: " + e.message, "err"); }).then(updateButtons);
