@@ -44,6 +44,7 @@ export async function onRequestGet({ request, env }) {
       exportName: names.get(r.id),
       originalName: r.original_filename || r.original_name,
       size: r.size,
+      hasFile: !!r.object_key,                                        // false once cleared out of R2
       firstSeen: r.first_seen,
       lastSeen: r.last_seen,
       timesSeen: r.times_seen,

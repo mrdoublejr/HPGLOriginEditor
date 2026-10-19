@@ -3,8 +3,8 @@
 //   - each plot file goes into publicPlotLibrary/ under its export name (Car.plt, Car1.plt ...)
 //   - publicPlotLibrary/index.json gets an entry for each, kept in the same order and format
 //     as js/build-publicPlotLibrary-index.js writes it (titles/notes you typed are kept)
-// Once the commit is made, each published upload is removed from the R2 bucket and from the
-// uploads list (its fingerprint stays in library_files, so a later copy shows "same plot as").
+// Once the commit is made, each published upload's file is removed from the R2 bucket; its
+// record stays in the uploads table (name, dates, times sent), and shows as "in the library".
 // Cloudflare Pages then rebuilds the site from GitHub by itself, a minute or two later.
 //
 // Setup (Pages project > Settings > Variables and secrets):
@@ -43,6 +43,13 @@ export async function onRequestPost({ request, env }) {
     const names = exportNames(results, lib);
     const taken = new Set(lib);
 
+    // plots already in the library (same content, any name) are never added again
+    const inLibrary = new Map();
+    try {
+      const { results: lf } = await env.DB.prepare("SELECT name, fingerprint FROM library_files").all();
+      for (const r of lf) if (!inLibrary.has(r.fingerprint)) inLibrary.set(r.fingerprint, r.name);
+    } catch (e) { /* no library_files table yet */ }
+
     const index = await g.readIndex();
     for (const x of index.publicPlotLibrary) {
       const n = String(x.file || "").split("/").pop();
@@ -53,6 +60,10 @@ export async function onRequestPost({ request, env }) {
     for (const id of ids) {
       const row = results.find((r) => r.id === id);
       if (!row || !row.object_key) { skipped.push({ id, why: "not found" }); continue; }
+      if (row.fingerprint && inLibrary.has(row.fingerprint)) {
+        skipped.push({ id, why: "already in the library as " + inLibrary.get(row.fingerprint) });
+        continue;
+      }
       let name = names.get(id) || cleanExportName(row);
       if (/\.txt$/i.test(name)) name = name.replace(/\.txt$/i, ".plt");
       const dot = name.lastIndexOf(".");
@@ -68,8 +79,11 @@ export async function onRequestPost({ request, env }) {
       entries.push({ path: LIB + "/" + finalName, sha: b.sha });
       index.publicPlotLibrary.push({ file: LIB + "/" + finalName, size: bytes.length });
       added.push({ id, key: row.object_key, name: finalName, fingerprint: row.fingerprint, size: bytes.length });
+      if (row.fingerprint) inLibrary.set(row.fingerprint, finalName);   // two identical uploads in one go: only the first
     }
-    if (!added.length) return json(400, { error: "nothing could be added", skipped });
+    if (!added.length) {
+      return json(400, { error: "nothing was added: " + skipped.map((k) => k.why).join("; "), skipped });
+    }
 
     const idx = await g.blob(g.indexText(index), "utf-8");
     entries.push({ path: LIB + "/index.json", sha: idx.sha });
@@ -90,7 +104,7 @@ export async function onRequestPost({ request, env }) {
   for (const a of added) {
     try {
       await env.MY_BUCKET.delete(a.key);
-      await env.DB.prepare("DELETE FROM uploads WHERE id = ?").bind(a.id).run();
+      await env.DB.prepare("UPDATE uploads SET object_key = NULL WHERE id = ?").bind(a.id).run();
       removed++;
     } catch (e) { keptInBucket.push(a.name); }
   }

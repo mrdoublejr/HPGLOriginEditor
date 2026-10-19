@@ -1,6 +1,8 @@
-// POST /admin/api/delete   { ids: [3, 7, 12] }
-// Deletes uploaded plots for good: the file in the R2 bucket and its row in the uploads list.
-// (Plots already in the public library are not touched; they live on GitHub.)
+// POST /admin/api/delete   { ids: [3, 7, 12] }                  : delete uploads for good
+// POST /admin/api/delete   { ids: [3, 7, 12], fileOnly: true }  : only clear their files out of R2
+//   (used for plots already in the public library: the record stays in the database, with its
+//    name, dates and how many times it was sent, but the file itself is gone from the bucket)
+// Plots in the public library are never touched here; they live on GitHub.
 // Protected by ../_middleware.js (Cloudflare Access), like the rest of /admin/.
 
 function json(status, obj) {
@@ -25,7 +27,8 @@ export async function onRequestPost({ request, env }) {
       const row = await env.DB.prepare("SELECT object_key FROM uploads WHERE id = ?").bind(id).first();
       if (!row) { failed.push(id); continue; }
       if (row.object_key) await env.MY_BUCKET.delete(row.object_key);
-      await env.DB.prepare("DELETE FROM uploads WHERE id = ?").bind(id).run();
+      if (body.fileOnly) await env.DB.prepare("UPDATE uploads SET object_key = NULL WHERE id = ?").bind(id).run();
+      else await env.DB.prepare("DELETE FROM uploads WHERE id = ?").bind(id).run();
       deleted.push(id);
     } catch (e) { failed.push(id); }
   }

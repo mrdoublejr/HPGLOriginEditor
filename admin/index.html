@@ -278,7 +278,10 @@
 
       var c = document.createElement("input"); c.type = "checkbox"; c.id = "c" + r.id;
       c.addEventListener("change", updateButtons); td().appendChild(c);
-      addThumb(td(), { key: "u" + r.id, id: r.id, size: r.size });
+      if (r.hasFile === false) {
+        if (r.sameAs.length) addThumb(td(), { key: "lib:" + r.sameAs[0], src: "/publicPlotLibrary/" + encodeURIComponent(r.sameAs[0]), size: r.size });
+        else { var nt = td(); nt.className = "tcell"; nt.innerHTML = '<div class="thumb-note" style="padding-top:40px">file cleared</div>'; }
+      } else addThumb(td(), { key: "u" + r.id, id: r.id, size: r.size });
 
       var t = td();
       var nm = document.createElement("div"); nm.className = "name"; nm.textContent = r.exportName;
@@ -299,16 +302,21 @@
         var o = document.createElement("div"); o.className = "orig"; o.textContent = "sent as " + r.originalName; t.appendChild(o);
       }
       var act = document.createElement("div"); act.className = "acts";
-      if (!r.sameAs.length) {
+      if (r.hasFile === false) {
+        var kept = document.createElement("span"); kept.className = "orig";
+        kept.textContent = "file cleared from storage · record kept";
+        act.appendChild(kept);
+      } else if (!r.sameAs.length) {
         var up = document.createElement("button"); up.className = "primary"; up.textContent = "Add to library";
         up.title = "Put this plot straight into the public library on GitHub";
         up.addEventListener("click", function () { publish([r]); });
         act.appendChild(up); act.appendChild(document.createTextNode(" "));
       }
       var a = document.createElement("a"); a.className = "btn"; a.textContent = "Download";
-      a.href = "/admin/api/file?id=" + r.id; act.appendChild(a);
+      a.href = r.hasFile === false && r.sameAs.length ? "/publicPlotLibrary/" + encodeURIComponent(r.sameAs[0]) : "/admin/api/file?id=" + r.id;
+      if (r.hasFile !== false || r.sameAs.length) act.appendChild(a);
       var rm = document.createElement("button"); rm.className = "danger"; rm.textContent = "Delete";
-      rm.title = "Delete this upload from storage for good";
+      rm.title = r.hasFile === false ? "Delete this record from the database" : "Delete this upload (file and record) for good";
       rm.addEventListener("click", function () { deleteUploads([r]); });
       act.appendChild(rm);
       t.appendChild(act);
@@ -332,8 +340,23 @@
     return fetch("/admin/api/list", { cache: "no-store" }).then(function (r) {
       if (!r.ok) throw new Error(r.status === 403 ? "Not signed in (403)" : "Server said " + r.status);
       return r.json();
-    }).then(function (j) { rows = j.rows; lib = j.library; render(); })
+    }).then(function (j) { rows = j.rows; lib = j.library; render(); return clearInLibrary(); })
       .catch(function (e) { $("tbl").hidden = true; say("Could not load the list: " + e.message, true); });
+  }
+
+  // Uploads whose exact content is confirmed to be in the public library (same fingerprint as a
+  // library file) are cleared out of R2 storage automatically: they're safely on GitHub.
+  var clearing = false;
+  function clearInLibrary() {
+    var done = rows.filter(function (r) { return r.sameAs.length && r.hasFile !== false; });
+    if (!done.length || clearing) return;
+    clearing = true;
+    return post("/admin/api/delete", { ids: done.map(function (r) { return r.id; }), fileOnly: true }).then(function (j) {
+      if (j.deleted) pubSay("Cleared " + j.deleted + " file" + (j.deleted === 1 ? "" : "s") +
+                             " out of storage (records kept): already in the public library (" + done.map(function (r) { return r.sameAs[0]; }).join(", ") + ").", "ok");
+      clearing = false;
+      return load();
+    }).catch(function (e) { clearing = false; pubSay("Could not clear uploads that are already in the library: " + e.message, "err"); });
   }
 
   // read the library files a few at a time, then reload the list
@@ -509,7 +532,7 @@
   function deleteUploads(picked) {
     if (!picked.length) return;
     if (!confirm("Delete " + (picked.length === 1 ? "this upload" : "these " + picked.length + " uploads") +
-                 " from storage for good?\n\n" + picked.map(function (r) { return "  " + r.exportName; }).join("\n") +
+                 " for good (file and database record)?\n\n" + picked.map(function (r) { return "  " + r.exportName; }).join("\n") +
                  "\n\nThis can't be undone. (Plots already in the public library stay there.)")) return;
     $("upDelete").disabled = true;
     pubSay("Deleting…");
@@ -529,12 +552,17 @@
   function pubSay(text, cls) { var m = $("pubmsg"); m.textContent = text; m.className = cls || ""; }
   $("publish").addEventListener("click", function () { publish(selected()); });
   function publish(picked) {
-    if (!picked.length) return;
-    var inLib = picked.filter(function (r) { return r.sameAs.length; });
+    // plots already in the library are left out (the server refuses them too)
+    var already = picked.filter(function (r) { return r.sameAs.length; });
+    picked = picked.filter(function (r) { return !r.sameAs.length && r.hasFile !== false; });
+    if (!picked.length) {
+      pubSay(already.length ? "Nothing to add: " + (already.length === 1 ? "that plot is" : "those plots are") + " already in the library." : "", "err");
+      return;
+    }
     var made = picked.filter(function (r) { return r.madeBySite; });
     var list = picked.map(function (r) { return "  " + r.exportName; }).join("\n");
     var warn = "";
-    if (inLib.length) warn += "\n\n" + inLib.length + " of them are already in the library (same plot).";
+    if (already.length) warn += "\n\nLeft out, already in the library: " + already.map(function (r) { return r.exportName; }).join(", ") + ".";
     if (made.length) warn += "\n\n" + made.length + " of them were MADE BY THIS SITE (corrected or changed copies), not originals.";
     if (!confirm("Add these to the public library on GitHub?\n\n" + list + warn +
                  "\n\nThe site rebuilds itself a minute or two later. Pull in VS Code before your next push.")) return;
@@ -544,7 +572,7 @@
       var s = "Added " + j.added.join(", ") + " to the library" +
               (j.removed ? " and removed " + (j.removed === 1 ? "it" : "them") + " from upload storage." : ".");
       if (j.keptInBucket && j.keptInBucket.length) s += " (Could not clear from storage: " + j.keptInBucket.join(", ") + ".)";
-      if (j.skipped && j.skipped.length) s += " Skipped " + j.skipped.length + ".";
+      if (j.skipped && j.skipped.length) s += " Skipped " + j.skipped.length + " (" + j.skipped.map(function (k) { return k.why; }).join("; ") + ").";
       s += " The site will show them after Cloudflare rebuilds (a minute or two). In VS Code, pull (Sync) before you push again.";
       pubSay(s, "ok");
       loadLibrary();

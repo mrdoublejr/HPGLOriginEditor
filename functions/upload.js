@@ -92,6 +92,7 @@ export async function onRequestPost(context) {
     const fingerprint = await plotFingerprint(data);
     const now = new Date().toISOString();
 
+
     const added = await env.DB.prepare(
       "INSERT OR IGNORE INTO uploads (fingerprint, original_name, original_filename, size, first_seen, last_seen) VALUES (?, ?, ?, ?, ?, ?)"
     ).bind(fingerprint, name, exactName, data.byteLength, now, now).run();
@@ -104,8 +105,15 @@ export async function onRequestPost(context) {
       return json(200, { success: true, status: "duplicate" });
     }
 
-    // new plot: name the file after its database number, then store it
     const id = added.meta.last_row_id;
+
+    // Already in the public library? Keep the record (name, date) but not the file: it's on GitHub.
+    try {
+      const inLib = await env.DB.prepare("SELECT name FROM library_files WHERE fingerprint = ? LIMIT 1").bind(fingerprint).first();
+      if (inLib) return json(200, { success: true, status: "in-library" });
+    } catch (e) { /* no library_files table yet: store it as usual */ }
+
+    // new plot: name the file after its database number, then store it
     const key = String(id).padStart(5, "0") + "-" + name;
     try {
       await env.DB.prepare("UPDATE uploads SET object_key = ? WHERE id = ?").bind(key, id).run();
