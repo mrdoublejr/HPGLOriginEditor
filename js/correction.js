@@ -31,8 +31,9 @@ function correctHPGL(text, plotterKey, modeKey, mediaKey, rotateDeg, noClamp) {
   const cx = (box.minX + box.maxX) / 2;
   const cy = (box.minY + box.maxY) / 2;
 
-  const pageW = media.across * IN_TO_PU;
-  const pageH = media.along  * IN_TO_PU;
+  const xy = pageXY(p, media);              // the plotter's X and Y extents (see core.js)
+  const pageW = xy.x * IN_TO_PU;
+  const pageH = xy.y * IN_TO_PU;
 
   // Target bbox-center in the plotter's coordinate system
   let targetCx, targetCy;

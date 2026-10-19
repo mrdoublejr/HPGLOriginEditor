@@ -430,7 +430,8 @@ function plotAreaPU() {
   const p = PLOTTERS[plotterSelect.value];
   const media = p.media[mediaSelect.value];
   const origin = getMode().origin;
-  const W = media.across * IN_TO_PU, H = media.along * IN_TO_PU;
+  const xy = pageXY(p, media);                 // the plotter's X and Y extents (see core.js)
+  const W = xy.x * IN_TO_PU, H = xy.y * IN_TO_PU;
   const side = p.margins.side * PU_PER_MM, lead = p.margins.lead * PU_PER_MM,
         trail = p.margins.trail * PU_PER_MM;
   switch (origin) {

@@ -66,8 +66,9 @@ function renderPreview(text, plotterKey, modeKey, mediaKey, targetBox,
   targetBox.__previewArgs = [text, plotterKey, modeKey, mediaKey, targetBox, enableDrag];
   watchPreviewBox(targetBox);
 
-  const pageW = media.across * IN_TO_PU;   // plotter X extent  ("Width")
-  const pageH = media.along  * IN_TO_PU;   // plotter Y extent  ("Length")
+  const xy = pageXY(p, media);             // the plotter's X and Y extents (see core.js)
+  const pageW = xy.x * IN_TO_PU;           // plotter X extent
+  const pageH = xy.y * IN_TO_PU;           // plotter Y extent
 
   // Turn the view only when plotter Y is the long side, so the long side always runs across.
   const turned = pageH >= pageW;
@@ -313,7 +314,7 @@ function renderPreview(text, plotterKey, modeKey, mediaKey, targetBox,
   ctx.restore();
 
   // ── Dimension labels: the long side along the bottom, the short side down the right ──
-  drawDimensions(ctx, page, media, turned);
+  drawDimensions(ctx, page, media, turned, !!p.xAlongFeed);
 
   ctx.save();
   ctx.font = "11px system-ui, sans-serif";
@@ -328,11 +329,13 @@ function renderPreview(text, plotterKey, modeKey, mediaKey, targetBox,
 }
 
 // Draws the two dimension lines with arrowheads and labels around the page rectangle.
-function drawDimensions(ctx, page, media, turned) {
-  const lengthTag = `Length (Y)  ${inches(media.along)} in`;
-  const widthTag  = `Width (X)  ${inches(media.across)} in`;
-  const bottomTag = turned ? lengthTag : widthTag;    // horizontal side
-  const sideTag   = turned ? widthTag  : lengthTag;   // vertical side
+function drawDimensions(ctx, page, media, turned, xAlongFeed) {
+  // Length = along the paper feed, Width = across it; the axis letter is the plotter's.
+  const lengthTag = `Length (${xAlongFeed ? "X" : "Y"})  ${inches(media.along)} in`;
+  const widthTag  = `Width (${xAlongFeed ? "Y" : "X"})  ${inches(media.across)} in`;
+  const xTag = xAlongFeed ? lengthTag : widthTag, yTag = xAlongFeed ? widthTag : lengthTag;
+  const bottomTag = turned ? yTag : xTag;             // horizontal side
+  const sideTag   = turned ? xTag : yTag;             // vertical side
   const right = page.left + page.w, bottom = page.top + page.h;
   const col = "#666";
   ctx.save();

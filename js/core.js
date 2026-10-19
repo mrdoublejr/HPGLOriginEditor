@@ -9,6 +9,16 @@ const ZOOM_MAX = 10.00;
 const ZOOM_STEP_BTN = 0.05;
 const ROTATE_STEP_DEG = 45;
 
+// The plotter's X and Y extents of a page, in inches. On most plotters here X runs across
+// the paper (along the pen carriage) and Y along the paper feed. Plotters marked
+// "xAlongFeed": true in plotters.json are the other way round: on the HP 7585B the X motor
+// drives the grit wheel (paper feed) and the Y drive cable moves the pen carriage along
+// the Y arm (service manual 07585-90002, Figure 6-1 and section 6-146).
+function pageXY(p, media) {
+  return p && p.xAlongFeed ? { x: media.along, y: media.across }
+                           : { x: media.across, y: media.along };
+}
+
 // ── State ────────────────────────────────────────────────────────
 let currentFile = null;
 let currentText = null;

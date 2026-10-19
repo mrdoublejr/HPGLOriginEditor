@@ -1,6 +1,7 @@
 {
   "hp7585b": {
     "name": "HP 7585B",
+    "xAlongFeed": true,
     "picture": "images/plotters/large-pen-plotter.hpgl",
     "pictureCaption": "Illustration: large moving-paper pen plotter on a stand",
     "unitsPerMM": 40,
