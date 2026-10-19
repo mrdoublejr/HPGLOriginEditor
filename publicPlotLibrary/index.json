@@ -85,12 +85,28 @@
       "size": 6726
     },
     {
+      "file": "publicPlotLibrary/Enterprise.hpgl",
+      "size": 2299900
+    },
+    {
+      "file": "publicPlotLibrary/Epson-MX-80.hpgl",
+      "size": 11217
+    },
+    {
       "file": "publicPlotLibrary/flap-drive-technical.hpgl",
       "size": 225050
     },
     {
+      "file": "publicPlotLibrary/Forth-Bridge.hpgl",
+      "size": 21863
+    },
+    {
       "file": "publicPlotLibrary/Glasses.plt",
       "size": 2140
+    },
+    {
+      "file": "publicPlotLibrary/HP_264x.hpgl",
+      "size": 47458
     },
     {
       "file": "publicPlotLibrary/HP_7585B_detailed_front.hpgl",
@@ -103,6 +119,10 @@
     {
       "file": "publicPlotLibrary/hp_designjet_plotter_detailed.hpgl",
       "size": 22170
+    },
+    {
+      "file": "publicPlotLibrary/HP-85.hpgl",
+      "size": 11983
     },
     {
       "file": "publicPlotLibrary/HP-9872CT.hpgl",
@@ -157,6 +177,10 @@
       "size": 2854
     },
     {
+      "file": "publicPlotLibrary/NCC_Enterprise_top.hpgl",
+      "size": 138647
+    },
+    {
       "file": "publicPlotLibrary/Northrop_B-2A.hpgl",
       "size": 31628
     },
@@ -167,6 +191,10 @@
     {
       "file": "publicPlotLibrary/pepito33.plt",
       "size": 242152
+    },
+    {
+      "file": "publicPlotLibrary/Porsche_356A_Speedster.hpgl",
+      "size": 88505
     },
     {
       "file": "publicPlotLibrary/r2d2.hpgl",
@@ -199,6 +227,10 @@
     {
       "file": "publicPlotLibrary/SVGbull1.hpgl",
       "size": 72856
+    },
+    {
+      "file": "publicPlotLibrary/Tektronix_Wizard.hpgl",
+      "size": 29862
     },
     {
       "file": "publicPlotLibrary/test-square.hpgl",
