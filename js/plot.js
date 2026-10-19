@@ -40,6 +40,7 @@
       const r = await fetch("/admin/api/plot", { cache: "no-store", redirect: "manual" });
       signedIn = r.ok && (r.headers.get("Content-Type") || "").includes("json");
     } catch (e) { signedIn = false; }
+    window.__sptOwner = signedIn;          // main.js leaves the owner's own use out of the activity log
     refresh();
   }
 

@@ -607,3 +607,29 @@ html[data-theme="dark"] .welcome-dialog { background: #1e2128; color: #dadde2; b
 html[data-theme="dark"] .welcome-pill { background: #3a3220; color: #e8d9a8; border-color: #8a7330; }
 html[data-theme="dark"] .welcome-pill:hover { background: #4a4028; }
 @media (prefers-reduced-motion: reduce) { .welcome-pill.landed { animation: none; } }
+
+/* Important notes above the corrected preview (js/main.js showAlerts) */
+.alerts {
+  margin: 10px 0 0;
+  padding: 8px 12px;
+  border: 2px solid #e0a020;
+  border-radius: 8px;
+  background: #fff6dc;
+  color: #6b4a00;
+  font-size: 0.88rem;
+  line-height: 1.35;
+}
+.alerts[hidden] { display: none; }
+.alert-line + .alert-line { margin-top: 4px; }
+.alerts.flash { animation: alert-flash 0.6s ease-in-out 5; }
+@keyframes alert-flash {
+  0%, 100% { background: #fff6dc; border-color: #e0a020; }
+  50%      { background: #ffc94a; border-color: #c0392b; }
+}
+@media (prefers-reduced-motion: reduce) { .alerts.flash { animation: none; } }
+html[data-theme="dark"] .alerts { background: #3a2f12; color: #f3d48a; border-color: #b8801a; }
+@keyframes alert-flash-dark {
+  0%, 100% { background: #3a2f12; border-color: #b8801a; }
+  50%      { background: #6e4f0e; border-color: #e0604a; }
+}
+html[data-theme="dark"] .alerts.flash { animation-name: alert-flash-dark; }

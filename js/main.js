@@ -27,6 +27,8 @@ let uploadConsent = null;
 let lastNegativeClamped = 0;
 let lastScalingUnresolved = false;   // file uses SC without IP (see resolveScaling)
 let lastPensMerged = 0;
+let alertsEl = null;              // the box of important notes above the corrected preview
+let shownAlerts = "";            // what it showed last time, so it only flashes for something new
 let lastRotationCleared = 0;     // the file's own RO rotation, set back to 0 (see correctHPGL)          // pen changes turned into pen 1 for a one-pen plotter
 
 function boot() {
@@ -48,6 +50,8 @@ function boot() {
     btnResetOffset   = document.getElementById("btnResetOffset");
     offsetDisplay    = document.getElementById("offsetDisplay");
     statusEl         = document.getElementById("status");
+    alertsEl         = document.getElementById("alerts");
+    alertsEl.addEventListener("animationend", () => alertsEl.classList.remove("flash"));  // done flashing: stay lit
     previewOriginal  = document.getElementById("previewOriginal");
     previewCorrected = document.getElementById("previewCorrected");
     zoomPercentEl    = document.getElementById("zoomPercent");
@@ -115,6 +119,9 @@ function wireEvents() {
   plotterSelect.addEventListener("change", () => {
     populateForPlotter(plotterSelect.value);
     runCorrection();
+    // log the plotter picked, once the visitor settles on one (not every step through the list)
+    clearTimeout(plotterLogTimer);
+    plotterLogTimer = setTimeout(() => logEvent("plotter", { file: currentFile ? currentFile.name : "" }), 2000);
   });
 
   hpglVersion.addEventListener("change", () => {
@@ -238,6 +245,7 @@ function loadFile(file) {
   if (uploadConsent && uploadConsent.checked && !cameFromLibrary) {
     uploadToR2(file);
   }
+  logEvent("open", { file: file.name, size: file.size, src: cameFromLibrary ? "library" : "upload" });
 
   const reader = new FileReader();
   reader.onload = (e) => {
@@ -257,6 +265,7 @@ function loadFile(file) {
     btnDownload.disabled = true;
     statusEl.textContent = "";
     statusEl.classList.remove("warn");
+    showAlerts([]);                              // new file: its notes flash again even if they match
     resetManualOffset();
     zoomLevel = 1.0;
     zoomPercentEl.textContent = "100%";
@@ -340,6 +349,7 @@ function runCorrection() {
     refreshStatus();
   } catch (err) {
     statusEl.textContent = "Error: " + err.message;
+    showAlerts([]);
     correctedText = null;
     correctedBaseText = null;
     btnDownload.disabled = true;
@@ -471,21 +481,20 @@ function refreshStatus() {
   statusEl.classList.remove("warn");
   statusEl.title = "";
 
+  const alerts = [];              // important: shown in the flashing box, not just the grey line
   const bbox = getBBox(out);
   let msg = bbox
     ? `X ${bbox.minX}→${bbox.maxX}  Y ${bbox.minY}→${bbox.maxY}`
     : "No coordinates";
   if (lastNegativeClamped > 0) {
-    msg += ` · ${lastNegativeClamped} clamped to 0 (${OUTPUT_FORMATS[getMode().output]?.name || "HP-GL/2"})`;
-    statusEl.classList.add("warn");
+    alerts.push(`${lastNegativeClamped} point${lastNegativeClamped !== 1 ? "s" : ""} below 0 clamped to 0 (${OUTPUT_FORMATS[getMode().output]?.name || "HP-GL/2"}): parts of the drawing may be squashed against the edge`);
   }
   if ((flipH || flipV) && FLIP_UNSUPPORTED.test(correctedBaseText)) {
-    msg += " · arcs/circles/other shapes not flipped";
-    statusEl.classList.add("warn");
+    alerts.push("Arcs, circles and some other shapes were not flipped: they will plot in the wrong place");
   }
 
   if (lastRotationCleared) {
-    msg += ` · the file's own ${lastRotationCleared}° turn (RO${lastRotationCleared}) was removed: it plots as shown; use Orient to turn it`;
+    alerts.push(`The file's own ${lastRotationCleared}° turn (RO${lastRotationCleared}) was removed: it plots exactly as shown here. Use Orient to turn it.`);
   }
   if (skipPens.size) {
     const list = [...skipPens].sort((a, b) => a - b).join(", ");
@@ -494,16 +503,14 @@ function refreshStatus() {
       : ` · pen${skipPens.size !== 1 ? "s" : ""} ${list} drawn ${penTarget === "1" ? "in black" : "with pen " + penTarget}`;
   }
   if (lastPenWarnings.length) {
-    msg += " · " + lastPenWarnings.join(" · ");
-    statusEl.classList.add("warn");
+    alerts.push(...lastPenWarnings);
   }
   if (lastPensMerged) {
     msg += ` · ${lastPensMerged} pen change${lastPensMerged !== 1 ? "s" : ""} set to pen 1 (one-pen plotter)`;
   }
 
   if (lastScalingUnresolved) {
-    msg += " · uses SC scaling without IP, so the plotter's own P1/P2 decide its size: check the position";
-    statusEl.classList.add("warn");
+    alerts.push("The file uses SC scaling without IP, so the plotter's own P1/P2 decide its size: check the position before plotting");
   }
 
   // DM/PL or C64 BASIC plotters: convert now so any problems show before downloading.
@@ -512,16 +519,38 @@ function refreshStatus() {
     const conv = fmt.convert(out);
     msg += ` · ${fmt.name} ${conv.text.length} bytes`;
     if (conv.clipped) {
-      msg += ` · ${conv.clipped} line${conv.clipped !== 1 ? "s" : ""} cut at paper edge`;
-      statusEl.classList.add("warn");
+      alerts.push(`${conv.clipped} line${conv.clipped !== 1 ? "s" : ""} cut off at the paper edge`);
     }
     if (conv.warnings.length) {
-      msg += ` · ${conv.warnings.length} ${fmt.name} note${conv.warnings.length !== 1 ? "s" : ""} (hover)`;
-      statusEl.title = conv.warnings.join("\n");
-      statusEl.classList.add("warn");
+      const w = conv.warnings;
+      alerts.push(...w.slice(0, 4).map((t) => fmt.name + ": " + t));
+      if (w.length > 4) alerts.push(`${w.length - 4} more ${fmt.name} note${w.length - 4 !== 1 ? "s" : ""} (hover the grey line under the buttons)`);
+      statusEl.title = w.join("\n");
     }
   }
   statusEl.textContent = msg;
+  showAlerts(alerts);
+}
+
+// The notes box above the corrected preview. It flashes a few times whenever a note
+// appears that wasn't there before, then stays lit (amber) as long as the note applies.
+function showAlerts(list) {
+  if (!alertsEl) return;
+  const key = list.join("\n");
+  alertsEl.hidden = !list.length;
+  alertsEl.textContent = "";
+  for (const t of list) {
+    const p = document.createElement("div");
+    p.className = "alert-line";
+    p.textContent = "\u26A0 " + t;
+    alertsEl.appendChild(p);
+  }
+  if (list.length && key !== shownAlerts) {
+    alertsEl.classList.remove("flash");
+    void alertsEl.offsetWidth;                        // restart the animation
+    alertsEl.classList.add("flash");
+  }
+  shownAlerts = key;
 }
 
 function populateForPlotter(plotterKey) {
@@ -944,6 +973,33 @@ function onDownload() {
   a.click();
   URL.revokeObjectURL(a.href);
   registerMadeFile(new TextEncoder().encode(out.content), out.fileName);
+  logEvent("download", { file: out.fileName, media: selectedText(mediaSelect) });
+}
+
+// ── Activity log ─────────────────────────────────────────────────
+// Sends a line to /log: which file was opened or downloaded and which plotter is picked.
+// Only names, sizes and settings, never the file. "visit" is a random id for this browser
+// tab, so one visit's lines group together. The site owner's own use (signed in) is left out.
+let plotterLogTimer = null;
+const visitId = (() => {
+  const make = () => Math.random().toString(36).slice(2, 12);
+  try {
+    let v = sessionStorage.getItem("spt-visit");
+    if (!v) { v = make(); sessionStorage.setItem("spt-visit", v); }
+    return v;
+  } catch (e) { return make(); }
+})();
+function selectedText(sel) {
+  return sel && sel.selectedIndex >= 0 ? sel.options[sel.selectedIndex].text : "";
+}
+function logEvent(ev, extra) {
+  if (window.__sptOwner) return;
+  try {
+    const body = Object.assign({ ev, visit: visitId,
+                                 plotter: selectedText(plotterSelect), mode: selectedText(hpglVersion) }, extra);
+    fetch("/log", { method: "POST", keepalive: true, headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(body) }).catch(() => {});
+  } catch (e) { /* best effort: never get in the way */ }
 }
 
 // ── "Made by this site" fingerprints ─────────────────────────────

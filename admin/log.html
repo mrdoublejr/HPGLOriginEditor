@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Activity log – admin</title>
+<style>
+  :root { --bg:#f5f7fa; --card:#fff; --ink:#1b2430; --mute:#5b6b7e; --line:#dde3ea; --accent:#1f6feb; --warn:#b8801a; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#12171d; --card:#1a2129; --ink:#e6ebf1; --mute:#9aa8b8; --line:#2a343f; --accent:#5aa2ff; --warn:#e0b050; }
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.45 system-ui, Segoe UI, sans-serif; }
+  main { max-width:1100px; margin:0 auto; padding:20px 16px 40px; }
+  h1 { font-size:1.3rem; margin:0 0 4px; }
+  h2 { font-size:1rem; margin:18px 0 8px; }
+  .sub { color:var(--mute); margin:0 0 16px; }
+  .bar { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:12px; }
+  button { font:inherit; padding:6px 12px; border:1px solid var(--line); border-radius:6px; background:var(--card); color:var(--ink); cursor:pointer; }
+  button[aria-pressed="true"] { background:var(--accent); border-color:var(--accent); color:#fff; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:8px; overflow-x:auto; }
+  table { width:100%; border-collapse:collapse; }
+  th, td { text-align:left; padding:6px 10px; border-bottom:1px solid var(--line); white-space:nowrap; font-size:.9rem; }
+  th { color:var(--mute); font-weight:600; font-size:.8rem; }
+  tr:last-child td { border-bottom:0; }
+  tr.newvisit td { border-top:2px solid var(--line); }
+  .mute { color:var(--mute); }
+  .ev { font-size:.75rem; padding:1px 7px; border-radius:10px; border:1px solid var(--line); }
+  .ev.open { border-color:#1f6feb; color:#1f6feb; }
+  .ev.download { border-color:#2e9e5b; color:#2e9e5b; }
+  .ev.plotter { border-color:var(--warn); color:var(--warn); }
+  .totals { display:flex; gap:18px; flex-wrap:wrap; margin:0 0 6px; }
+  .totals b { font-size:1.3rem; display:block; }
+  .chips { display:flex; gap:6px; flex-wrap:wrap; }
+  .chip { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:2px 10px; font-size:.85rem; }
+  #msg { color:var(--mute); padding:14px; }
+  #msg.err { color:#c0392b; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Activity log</h1>
+  <p class="sub">Which files visitors open and which plotters they pick. No IP addresses, only the country.
+     Lines in one visit are grouped together. <a href="./">← Uploaded plots</a> · <a href="messages.html">Messages →</a></p>
+  <div class="bar" role="group" aria-label="Period">
+    <button data-days="1">Today</button>
+    <button data-days="7" aria-pressed="true">7 days</button>
+    <button data-days="30">30 days</button>
+    <button data-days="180">180 days</button>
+    <button id="reload">Refresh</button>
+  </div>
+  <div class="totals" id="totals"></div>
+  <h2>Plotters picked</h2>
+  <div class="chips" id="plotters"></div>
+  <h2>Log</h2>
+  <div class="card">
+    <div id="msg">Loading…</div>
+    <table id="tbl" hidden>
+      <thead><tr><th>When</th><th>What</th><th>File</th><th>Plotter</th><th>Mode</th><th>Visit</th></tr></thead>
+      <tbody id="body"></tbody>
+    </table>
+  </div>
+</main>
+<script>
+(function () {
+  var days = 7;
+  function $(id) { return document.getElementById(id); }
+  function when(s) {
+    var d = new Date(s);
+    return isNaN(d) ? "" : d.toLocaleDateString([], { month: "short", day: "numeric" }) + " " +
+      d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  }
+  function kb(n) { return n == null ? "" : n < 1024 ? n + " B" : (n / 1024).toFixed(1) + " KB"; }
+  var WORD = { open: "opened", plotter: "picked plotter", download: "downloaded" };
+
+  function load() {
+    $("msg").hidden = false; $("msg").className = ""; $("msg").textContent = "Loading…";
+    fetch("/admin/api/log?days=" + days, { cache: "no-store" }).then(function (r) {
+      return r.json().then(function (j) { if (!r.ok) throw new Error(j.error || r.status); return j; });
+    }).then(show).catch(function (e) {
+      $("tbl").hidden = true; $("msg").className = "err"; $("msg").textContent = "Could not load the log: " + e.message;
+    });
+  }
+
+  function show(j) {
+    var t = j.totals || {};
+    $("totals").innerHTML = "";
+    [["visits", t.visits], ["files opened", t.opens], ["downloads", t.downloads]].forEach(function (x) {
+      var d = document.createElement("div"); var b = document.createElement("b");
+      b.textContent = x[1] || 0; d.appendChild(b); d.appendChild(document.createTextNode(x[0])); $("totals").appendChild(d);
+    });
+
+    $("plotters").innerHTML = "";
+    (j.plotters || []).forEach(function (p) {
+      var c = document.createElement("span"); c.className = "chip"; c.textContent = p.plotter + " · " + p.n;
+      $("plotters").appendChild(c);
+    });
+    if (!(j.plotters || []).length) $("plotters").innerHTML = '<span class="mute">none yet</span>';
+
+    var body = $("body"); body.innerHTML = "";
+    var rows = j.rows || [], prev = null;
+    rows.forEach(function (r) {
+      var tr = document.createElement("tr");
+      if (prev !== null && r.visit !== prev) tr.className = "newvisit";
+      prev = r.visit;
+      function td(text, cls) { var c = document.createElement("td"); if (cls) c.className = cls; c.textContent = text || ""; tr.appendChild(c); return c; }
+      td(when(r.t), "mute");
+      var w = td(""); var s = document.createElement("span"); s.className = "ev " + r.ev; s.textContent = WORD[r.ev] || r.ev; w.appendChild(s);
+      var f = td(r.file);
+      if (r.ev === "open") {
+        var m = document.createElement("span"); m.className = "mute";
+        m.textContent = "  " + kb(r.size) + (r.src === "library" ? " · from library" : ""); f.appendChild(m);
+      }
+      td(r.plotter);
+      td([r.mode, r.media].filter(Boolean).join(" · "), "mute");
+      td([r.country, (r.visit || "").slice(0, 6)].filter(Boolean).join(" · "), "mute");
+      body.appendChild(tr);
+    });
+    $("tbl").hidden = !rows.length;
+    $("msg").hidden = !!rows.length;
+    $("msg").textContent = rows.length ? "" : "Nothing logged in this period yet.";
+  }
+
+  document.querySelectorAll("[data-days]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      days = +b.dataset.days;
+      document.querySelectorAll("[data-days]").forEach(function (x) { x.setAttribute("aria-pressed", x === b ? "true" : "false"); });
+      load();
+    });
+  });
+  $("reload").addEventListener("click", load);
+  load();
+})();
+</script>
+</body>
+</html>
