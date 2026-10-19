@@ -274,6 +274,10 @@ function loadFile(file) {
     flipH = false;
     flipV = false;
     updateFlipButtons();
+    // Optimize starts off for every new file, so its repeated lines show first
+    // (otherwise they'd be removed before you ever saw them).
+    optimizeOn = false;
+    btnOptimize.setAttribute("aria-pressed", "false");
 
     renderOriginalPreview();
     runCorrection();
