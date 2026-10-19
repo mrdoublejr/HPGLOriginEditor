@@ -12,25 +12,105 @@
 const PEN_COLORS = ["#222", "#222", "#c0392b", "#1e7a46", "#1f5fa8",
                     "#8e44ad", "#d68910", "#7f8c8d", "#2c3e50"];
 
+// Splits HPGL into commands: [{op, args}]. A command's numbers may run over several
+// lines (many CAD files wrap long PD lists), so a new line does NOT end a command; the
+// next two-letter mnemonic does. Label text (LB) runs to the label terminator
+// (ETX, character 3, unless DT changed it), so letters and ";" inside it are kept.
+function hpglCommands(text) {
+  const out = [];
+  let i = 0, term = "\x03";
+  const n = text.length;
+  while (i < n) {
+    const ch = text[i];
+    if (!/[A-Za-z]/.test(ch)) { i++; continue; }
+    if (i + 1 >= n || !/[A-Za-z]/.test(text[i + 1])) { i++; continue; }
+    const op = text.substr(i, 2).toUpperCase();
+    i += 2;
+    if (op === "LB") {
+      let j = text.indexOf(term, i);
+      if (j < 0) j = n;
+      out.push({ op, args: text.slice(i, j) });
+      i = j + 1;
+      continue;
+    }
+    if (op === "DT") {                     // DTx sets the label terminator; DT; resets it
+      const c = text[i];
+      term = (c === undefined || c === ";" || c === "\r" || c === "\n") ? "\x03" : c;
+      out.push({ op, args: c && c !== ";" ? c : "" });
+      i += (c && c !== ";") ? 1 : 0;
+      continue;
+    }
+    let j = i;
+    while (j < n && text[j] !== ";" && !/[A-Za-z]/.test(text[j])) j++;
+    out.push({ op, args: text.slice(i, j) });
+    i = j;
+  }
+  return out;
+}
+
 // Reads HPGL into paths that remember which pen drew them: [{pen, pts:[[x,y],...]}].
-// Understands IN, SP, PU, PD, PA, PR. Used only for drawing the preview.
+// Understands IN, SP, PU, PD, PA, PR, and labels: LB text with SI/SR size, DI/DR
+// direction, CP moves and DT terminator. The labels are returned on the array as
+// .labels: [{pen, x, y, w, h, ux, uy, text}] (x, y = start of the baseline, w/h =
+// character width/height in plotter units, ux/uy = text direction). Used only for
+// drawing the preview.
 function parsePenPaths(text) {
   const out = [];
+  const labels = [];
+  out.labels = labels;
+  const CM = 400;                                  // plotter units per cm
   let pen = 1, down = false, abs = true, x = 0, y = 0, cur = null;
-  for (let c of text.split(/[;\n\r]+/)) {
-    c = c.trim();
-    if (c.length < 2) continue;
-    const op = c.slice(0, 2).toUpperCase();
-    const args = c.slice(2);
-    if (op === "IN") { pen = 1; down = false; abs = true; cur = null; continue; }
+  let cw = 0.19 * CM, chh = 0.27 * CM;             // character size (HP's usual default)
+  let ux = 1, uy = 0;                              // label direction
+  const num = (a) => (a.match(/[-+]?(?:\d+\.?\d*|\.\d+)/g) || []).map(Number);
+  for (const { op, args } of hpglCommands(text)) {
+    if (op === "IN") { pen = 1; down = false; abs = true; cur = null; cw = 0.19 * CM; chh = 0.27 * CM; ux = 1; uy = 0; continue; }
     if (op === "SP") { pen = parseInt(args, 10) || 0; cur = null; continue; }
+    if (op === "SI" || op === "SR") {
+      const v = num(args);
+      if (op === "SI" && v.length >= 2) { cw = Math.abs(v[0]) * CM; chh = Math.abs(v[1]) * CM; }
+      else { cw = 0.19 * CM; chh = 0.27 * CM; }    // SR depends on P1/P2: shown at the usual size
+      continue;
+    }
+    if (op === "DI" || op === "DR") {
+      const v = num(args);
+      const len = v.length >= 2 ? Math.hypot(v[0], v[1]) : 0;
+      if (len > 0) { ux = v[0] / len; uy = v[1] / len; } else { ux = 1; uy = 0; }
+      continue;
+    }
+    if (op === "CP") {
+      const v = num(args);
+      const sp = v[0] || 0, ln = v[1] || 0;          // spaces along the text, lines up (+) / down (-)
+      x += sp * 1.5 * cw * ux - ln * 2 * chh * uy;
+      y += sp * 1.5 * cw * uy + ln * 2 * chh * ux;
+      cur = null;
+      continue;
+    }
+    if (op === "LB") {
+      let lx = x, ly = y, sx = x, sy = y, line = "";
+      const flush = () => {
+        if (line && pen > 0) labels.push({ pen, x: lx, y: ly, w: cw, h: chh, ux, uy, text: line });
+        lx += line.length * 1.5 * cw * ux; ly += line.length * 1.5 * cw * uy;
+        line = "";
+      };
+      for (const c of args) {
+        if (c === "\r") { flush(); lx = sx; ly = sy; }                       // carriage return
+        else if (c === "\n") {                                                // line feed
+          flush(); sx += 2 * chh * uy; sy -= 2 * chh * ux; lx += 2 * chh * uy; ly -= 2 * chh * ux;
+        }
+        else if (c >= " ") line += c;
+      }
+      flush();
+      x = lx; y = ly; cur = null;
+      continue;
+    }
     if (op === "PA" || op === "PR" || op === "PU" || op === "PD") {
       if (op === "PA") abs = true;
       else if (op === "PR") abs = false;
       else { down = (op === "PD"); if (!down) cur = null; }
-      const n = args.match(/-?\d+(\.\d+)?/g) || [];
+      const n = num(args);
       for (let k = 0; k + 1 < n.length; k += 2) {
-        let nx = parseFloat(n[k]), ny = parseFloat(n[k + 1]);
+        let nx = n[k], ny = n[k + 1];
         if (!abs) { nx += x; ny += y; }
         if (down && pen > 0) {
           if (!cur) { cur = { pen, pts: [[x, y]] }; out.push(cur); }
@@ -254,6 +334,30 @@ function renderPreview(text, plotterKey, modeKey, mediaKey, targetBox,
       else ctx.lineTo(px, py);
     }
     ctx.stroke();
+  }
+
+  // ── Labels (LB): drawn at the file's own character size and direction ──
+  // The plotter draws them with its own stroke font, so the letter shapes here are only
+  // close; their place, size and direction match what gets plotted.
+  for (const L of (penPaths.labels || [])) {
+    const [sx, sy] = toScreen(L.x, L.y, s);
+    const [ax, ay] = toScreen(L.x + L.ux, L.y + L.uy, s);      // one unit along the text
+    const [bx, by] = toScreen(L.x - L.uy, L.y + L.ux, s);      // one unit "up" from it
+    ctx.save();
+    ctx.transform(ax - sx, ay - sy, -(bx - sx), -(by - sy), sx, sy);
+    ctx.font = `${L.h / 0.72}px Arial, Helvetica, sans-serif`;
+    ctx.textBaseline = "alphabetic";
+    ctx.fillStyle = PEN_COLORS[L.pen] || PEN_COLORS[0];
+    const mw = ctx.measureText("M").width || L.w;
+    const k = L.w / mw;                                        // squeeze letters to the file's width
+    for (let i = 0; i < L.text.length; i++) {
+      ctx.save();
+      ctx.translate(i * 1.5 * L.w, 0);
+      ctx.scale(k, 1);
+      ctx.fillText(L.text[i], 0, 0);
+      ctx.restore();
+    }
+    ctx.restore();
   }
 
   // ── Lines drawn more than once (corrected preview only) ──
