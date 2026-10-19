@@ -258,8 +258,11 @@ function renderPreview(text, plotterKey, modeKey, mediaKey, targetBox,
   // ── Lines drawn more than once (corrected preview only) ──
   // Every repeat of the same line (same pen, either direction) is painted over it,
   // wider and redder each time (orange = twice ... deep red = 6 times or more).
+  // They are always counted (main.js shows the count next to Optimize); painted only when
+  // Show repeats is on.
   let repeats = 0;
-  if (enableDrag && (typeof showRepeats === "undefined" || showRepeats)) {
+  const paintRepeats = typeof showRepeats === "undefined" || showRepeats;
+  if (enableDrag) {
     const seen = new Map();
     const heat = ["#ff9800", "#ff6d00", "#f4511e", "#e53935", "#c2185b"];   // 2nd, 3rd, 4th, 5th, 6th+ time
     for (const path of penPaths) {
@@ -273,6 +276,7 @@ function renderPreview(text, plotterKey, modeKey, mediaKey, targetBox,
         seen.set(k, n);
         if (n < 2) continue;
         repeats++;
+        if (!paintRepeats) continue;
         ctx.strokeStyle = heat[Math.min(n - 2, heat.length - 1)];
         ctx.globalAlpha = 0.85;
         ctx.lineWidth = Math.min(12, 2.5 + (n - 2) * 2);
@@ -283,20 +287,7 @@ function renderPreview(text, plotterKey, modeKey, mediaKey, targetBox,
     ctx.globalAlpha = 1;
   }
   ctx.restore();
-
-  if (repeats) {
-    ctx.save();
-    ctx.font = "11px system-ui, sans-serif";
-    ctx.textAlign = "left";
-    ctx.textBaseline = "bottom";
-    const note = `orange/red: ${repeats.toLocaleString()} repeat${repeats === 1 ? "" : "s"} of lines already drawn`;
-    const nx = page.left + 4, ny = page.top + page.h - 4;
-    ctx.fillStyle = "rgba(255, 255, 255, 0.85)";
-    ctx.fillRect(nx - 2, ny - 14, ctx.measureText(note).width + 4, 15);
-    ctx.fillStyle = "#d26a00";
-    ctx.fillText(note, nx, ny);
-    ctx.restore();
-  }
+  if (enableDrag) window.__repeatCount = repeats;    // shown next to Optimize (main.js showOptimizeNote)
 
   // ── Origin star ──
   ctx.save();

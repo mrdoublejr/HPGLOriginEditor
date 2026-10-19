@@ -337,11 +337,11 @@ function runCorrection() {
       lastOptimize = optCache.result;
       correctedBaseText = lastOptimize.text;
     }
-    showOptimizeNote();
     correctedText = applyManualOffset(correctedBaseText);
 
     renderPreview(correctedText, plotterKey, modeKey, mediaKey,
                   previewCorrected, true);
+    showOptimizeNote();                          // after drawing: it uses the repeat count
 
     previewCorrected.classList.add("draggable");
     btnDownload.disabled = false;
@@ -844,9 +844,21 @@ function renderPenChips() {
 // The note next to the Optimize button: what it took out, or why it left the file alone.
 function showOptimizeNote() {
   if (!optStatsEl) return;
-  optStatsEl.classList.remove("warn");
+  optStatsEl.classList.remove("warn", "nudge");
+  btnOptimize.classList.remove("nudge");
   const o = lastOptimize;
-  if (!o) { optStatsEl.textContent = ""; optStatsEl.title = ""; return; }
+  if (!o) {
+    // Optimize is off: if the file draws lines more than once, say so, and pulse
+    // the note and the Optimize button until it's switched on.
+    const n = optimizeOn ? 0 : (window.__repeatCount || 0);
+    optStatsEl.textContent = n
+      ? `${n.toLocaleString()} line${n === 1 ? " is" : "s are"} drawn more than once: Optimize can remove ${n === 1 ? "it" : "them"}`
+      : "";
+    optStatsEl.title = n ? "Show repeats paints them orange/red on the preview. Optimize draws each line once." : "";
+    optStatsEl.classList.toggle("nudge", !!n);
+    btnOptimize.classList.toggle("nudge", !!n);
+    return;
+  }
   if (!o.ok) {
     optStatsEl.textContent = "not optimized: " + o.reason;
     optStatsEl.title = "The file is used exactly as it is.";

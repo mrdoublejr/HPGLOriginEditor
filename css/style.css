@@ -633,3 +633,18 @@ html[data-theme="dark"] .alerts { background: #3a2f12; color: #f3d48a; border-co
   50%      { background: #6e4f0e; border-color: #e0604a; }
 }
 html[data-theme="dark"] .alerts.flash { animation-name: alert-flash-dark; }
+
+/* Optimize nudge: the button and its note pulse gently while the file draws lines
+   more than once and Optimize is off (js/main.js showOptimizeNote) */
+.opt-stats.nudge { color: #d26a00; font-weight: 600; animation: nudge-text 1.8s ease-in-out infinite; }
+.icon-btn.nudge { animation: nudge-btn 1.8s ease-in-out infinite; border-color: #f0a020; }
+@keyframes nudge-btn {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(240, 160, 32, 0); }
+  50%      { box-shadow: 0 0 0 4px rgba(240, 160, 32, 0.55); }
+}
+@keyframes nudge-text {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.45; }
+}
+html[data-theme="dark"] .opt-stats.nudge { color: #f0a84a; }
+@media (prefers-reduced-motion: reduce) { .opt-stats.nudge, .icon-btn.nudge { animation: none; } }
