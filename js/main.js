@@ -26,10 +26,10 @@ let uploadConsent = null;
 // How many coordinates the last output clamped to 0 (shown in the status line).
 let lastNegativeClamped = 0;
 let lastScalingUnresolved = false;   // file uses SC without IP (see resolveScaling)
-let lastPensMerged = 0;
+let lastPensMerged = 0;           // pen changes turned into pen 1 for a one-pen plotter
 let alertsEl = null;              // the box of important notes above the corrected preview
 let shownAlerts = "";            // what it showed last time, so it only flashes for something new
-let lastRotationCleared = 0;     // the file's own RO rotation, set back to 0 (see correctHPGL)          // pen changes turned into pen 1 for a one-pen plotter
+let lastRotationCleared = 0;     // the file's own RO rotation, set back to 0 (see correctHPGL)
 
 function boot() {
   try {
@@ -202,7 +202,10 @@ function wireEvents() {
   btnDownload.addEventListener("click", onDownload);
 
   btnRotatePlus.addEventListener("click", () => {
-    rotationDeg = (rotationDeg + ROTATE_STEP_DEG) % 360;
+    // Clockwise as seen on the preview (and on the paper), as the ↻ button says.
+    // correctHPGL turns by +angle anticlockwise in plotter units, and every preview
+    // layout (turned or not, top-left or not) shows it the same way round, so step back.
+    rotationDeg = (rotationDeg - ROTATE_STEP_DEG + 360) % 360;
     runCorrection();
   });
   btnRepeats.addEventListener("click", () => {
@@ -409,15 +412,22 @@ function fullDrawingBox() {
 }
 
 function zoomedText(text) {
-  if (!text || Math.abs(zoomLevel - 1) < 1e-9) return text;
+  const t = zoomTransform(text);
+  if (!t) return text;
+  return shiftPairs(applyZoom(text, t.z), t.dx, t.dy);
+}
+
+// How zoomedText moves a point: (x, y) -> (x·z + dx, y·z + dy), give or take rounding.
+// null at 100%. The preview uses it to paint repeated lines found at 100%.
+function zoomTransform(text) {
+  if (!text || Math.abs(zoomLevel - 1) < 1e-9) return null;
   const fb = (text === correctedText && correctedFullBase) ? fullDrawingBox() : null;
   const b = fb ? { minX: fb.minX + manualOffsetX, maxX: fb.maxX + manualOffsetX,
                    minY: fb.minY + manualOffsetY, maxY: fb.maxY + manualOffsetY }
                : drawnBBox(text);
-  if (!b) return applyZoom(text, zoomLevel);
+  if (!b) return { z: zoomLevel, dx: 0, dy: 0 };
   const cx = (b.minX + b.maxX) / 2, cy = (b.minY + b.maxY) / 2;
-  return shiftPairs(applyZoom(text, zoomLevel),
-                    Math.round(cx * (1 - zoomLevel)), Math.round(cy * (1 - zoomLevel)));
+  return { z: zoomLevel, dx: Math.round(cx * (1 - zoomLevel)), dy: Math.round(cy * (1 - zoomLevel)) };
 }
 
 // Moves absolute HP-GL coordinate pairs by (dx, dy). Label text, sizes, radii,
@@ -846,6 +856,21 @@ function renderPenChips() {
   }
 }
 
+// With Optimize off: what switching it on would take out of the drawing as it is now,
+// or null when it's on already, would change nothing, or can't work on this file.
+// Runs the optimizer itself (once; the result is kept for when Optimize is switched on),
+// so the numbers are exactly what Optimize would do. Used by the Plot button (plot.js).
+function pendingOptimize() {
+  if (optimizeOn || !correctedBaseText || typeof optimizeHPGL !== "function") return null;
+  if (optCache.key !== correctedBaseText) {
+    optCache = { key: correctedBaseText, result: optimizeHPGL(correctedBaseText) };
+  }
+  const r = optCache.result;
+  if (!r.ok) return null;
+  const lines = r.stats.dupLines + r.stats.overlaps;
+  return lines ? { lines, stats: r.stats } : null;
+}
+
 // The note next to the Optimize button: what it took out, or why it left the file alone.
 function showOptimizeNote() {
   if (!optStatsEl) return;
@@ -857,9 +882,10 @@ function showOptimizeNote() {
     // the note and the Optimize button until it's switched on.
     const n = optimizeOn ? 0 : (window.__repeatCount || 0);
     optStatsEl.textContent = n
-      ? `${n.toLocaleString()} line${n === 1 ? " is" : "s are"} drawn more than once: Optimize can remove ${n === 1 ? "it" : "them"}`
+      ? `${n.toLocaleString()} line${n === 1 ? " goes" : "s go"} over ink already drawn: Optimize can take that out`
       : "";
-    optStatsEl.title = n ? "Show repeats paints them orange/red on the preview. Optimize draws each line once." : "";
+    optStatsEl.title = n ? "Lines drawn twice, or running partly along a line already drawn (1 mm or more). " +
+                           "Show repeats paints them orange/red on the preview. Optimize draws that ink once." : "";
     optStatsEl.classList.toggle("nudge", !!n);
     btnOptimize.classList.toggle("nudge", !!n);
     return;
@@ -871,13 +897,15 @@ function showOptimizeNote() {
     return;
   }
   const t = o.stats, f = (v) => v.toLocaleString();
-  const cut = t.dupLines + t.dots + t.nodes;
+  const cut = t.dupLines + t.overlaps + t.dots + t.nodes;
   const travel = t.travelBefore ? Math.round(100 * (1 - t.travelAfter / t.travelBefore)) : 0;
   optStatsEl.textContent = cut || travel > 0
     ? `${f(cut)} moves removed · pen-up travel ${travel >= 0 ? "−" : "+"}${Math.abs(travel)}%`
     : "nothing to remove";
   optStatsEl.title =
     `${f(t.dupLines)} repeated lines, ${f(t.dots)} dots on ink, ${f(t.nodes)} extra nodes on straight lines\n` +
+    (t.overlaps ? `${f(t.overlaps)} lines trimmed where they ran over ink already drawn ` +
+                  `(${(t.overlapLen / IN_TO_PU).toFixed(1)} in of ink not drawn twice)\n` : "") +
     `pen-down lines ${f(t.before)} → ${f(t.after)}\n` +
     `pen lifts ${f(t.liftsBefore)} → ${f(t.liftsAfter)}\n` +
     `pen-up travel ${f(Math.round(t.travelBefore / 400))} → ${f(Math.round(t.travelAfter / 400))} in\n` +

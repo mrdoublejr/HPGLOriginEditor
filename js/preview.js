@@ -125,6 +125,87 @@ function parsePenPaths(text) {
   return out;
 }
 
+// ── Repeated ink ──
+// Goes through the drawing pen by pen and finds ink laid down on top of ink of the
+// same pen: the very same line again (either direction), or a line running along
+// one already drawn (the same straight line, at least REPEAT_MIN_OVERLAP of it).
+// Returns { count: lines that do this, pieces: [[ax, ay, bx, by, times-before]...] }:
+// the parts that go over ink, with how many times that spot was inked before.
+// Lines with fractional coordinates are only matched when they are the very same line.
+// The result for the last drawing is kept, so zooming and dragging don't redo it.
+const REPEAT_MIN_OVERLAP = 40;                    // plotter units (1 mm), as Optimize (OPT_MIN_TRIM)
+let repeatCache = { text: null, result: null };
+
+function findRepeats(text) {
+  if (repeatCache.text === text) return repeatCache.result;
+  const gcd = (a, b) => { a = Math.abs(a); b = Math.abs(b); while (b) [a, b] = [b, a % b]; return a; };
+  const lines = new Map();                        // pen + line -> stretches inked so far [{ s, e, d }] sorted
+  const exact = new Set();
+  const pieces = [];
+  let count = 0;
+  let penPaths = parsePenPaths(text);
+  if (!penPaths.length) penPaths = parsePaths(text).map((pts) => ({ pen: 1, pts }));
+  for (const path of penPaths) {
+    const pts = path.pts;
+    for (let i = 1; i < pts.length; i++) {
+      const [ax, ay] = pts[i - 1], [bx, by] = pts[i];
+      if (ax === bx && ay === by) continue;
+      const ek = path.pen + ":" + ((ax < bx || (ax === bx && ay < by))
+        ? ax + "," + ay + "," + bx + "," + by : bx + "," + by + "," + ax + "," + ay);
+      const same = exact.has(ek);
+      exact.add(ek);
+      // where the line lies: its direction and offset (whole numbers), or the line itself
+      let key, ta, tb, per;                       // per = plotter units per step of t
+      if (Number.isInteger(ax) && Number.isInteger(ay) && Number.isInteger(bx) && Number.isInteger(by)) {
+        let dx = bx - ax, dy = by - ay; const g = gcd(dx, dy); dx /= g; dy /= g;
+        if (dx < 0 || (dx === 0 && dy < 0)) { dx = -dx; dy = -dy; }
+        key = path.pen + "|" + dx + "," + dy + "," + (dy * ax - dx * ay);
+        ta = ax * dx + ay * dy; tb = bx * dx + by * dy; per = 1 / Math.hypot(dx, dy);
+      } else {
+        key = ek; ta = 0; tb = 1; per = Math.hypot(bx - ax, by - ay);
+      }
+      if (!lines.has(key)) lines.set(key, []);
+      const lo = Math.min(ta, tb), hi = Math.max(ta, tb);
+      const over = repeatCover(lines.get(key), lo, hi);   // [[s, e, times-before]...] inside lo..hi
+      let len = 0;
+      for (const [s0, s1] of over) len += (s1 - s0) * per;
+      if (!same && len < REPEAT_MIN_OVERLAP) continue;
+      count++;
+      const at = (t) => { const f = (t - ta) / (tb - ta); return [ax + (bx - ax) * f, ay + (by - ay) * f]; };
+      for (const [s0, s1, d] of over) { const p = at(s0), q = at(s1); pieces.push([p[0], p[1], q[0], q[1], d]); }
+    }
+  }
+  const result = { count, pieces };
+  repeatCache = { text, result };
+  return result;
+}
+
+// One line's inked stretches (sorted, not overlapping, each with how many times it
+// was inked). Inks lo..hi once more; returns the parts of lo..hi that were already
+// inked, with how many times.
+function repeatCover(list, lo, hi) {
+  let a = 0, b = list.length;                     // first stretch ending after lo
+  while (a < b) { const m = (a + b) >> 1; if (list[m].e <= lo) a = m + 1; else b = m; }
+  const over = [], next = [];
+  let at = lo, j = a;
+  for (; j < list.length && list[j].s < hi; j++) {
+    const p = list[j];
+    if (p.s < lo) next.push({ s: p.s, e: lo, d: p.d });              // part before lo stays as it was
+    else if (p.s > at) next.push({ s: at, e: p.s, d: 1 });           // gap: inked for the first time
+    const s0 = Math.max(p.s, lo), s1 = Math.min(p.e, hi);
+    over.push([s0, s1, p.d]);
+    next.push({ s: s0, e: s1, d: p.d + 1 });
+    if (p.e > hi) next.push({ s: hi, e: p.e, d: p.d });              // part after hi stays as it was
+    at = s1;
+  }
+  if (at < hi) next.push({ s: at, e: hi, d: 1 });
+  const rest = list.slice(j);                    // (not splice(...next): a huge list would overflow the stack)
+  list.length = a;
+  for (const n of next) list.push(n);
+  for (const r of rest) list.push(r);
+  return over;
+}
+
 // Which way plotter +Y points on screen (−1 = right, +1 = left). Set by renderPreview
 // and used by the drag code below.
 // Inch values for labels: at most 2 decimals (some plot areas are exact unit counts, e.g. 3.77953 in).
@@ -361,35 +442,35 @@ function renderPreview(text, plotterKey, modeKey, mediaKey, targetBox,
   }
 
   // ── Lines drawn more than once (corrected preview only) ──
-  // Every repeat of the same line (same pen, either direction) is painted over it,
-  // wider and redder each time (orange = twice ... deep red = 6 times or more).
-  // They are always counted (main.js shows the count next to Optimize); painted only when
-  // Show repeats is on.
+  // Ink that goes down again on top of ink of the same pen is painted over, wider
+  // and redder each time (orange = twice ... deep red = 6 times or more). That's the
+  // very same line again, or a line running partly along one already drawn (at least
+  // 1 mm of it, the same rule Optimize uses to trim it). They are always counted
+  // (main.js shows the count next to Optimize); painted only when Show repeats is on.
+  // Found once per drawing at 100% (cached), then painted at the current Size.
   let repeats = 0;
   const paintRepeats = typeof showRepeats === "undefined" || showRepeats;
   if (enableDrag) {
-    const seen = new Map();
-    const heat = ["#ff9800", "#ff6d00", "#f4511e", "#e53935", "#c2185b"];   // 2nd, 3rd, 4th, 5th, 6th+ time
-    for (const path of penPaths) {
-      const pts = path.pts;
-      for (let i = 1; i < pts.length; i++) {
-        const [ax, ay] = pts[i - 1], [bx, by] = pts[i];
-        if (ax === bx && ay === by) continue;
-        const k = path.pen + ":" + ((ax < bx || (ax === bx && ay < by))
-          ? ax + "," + ay + "," + bx + "," + by : bx + "," + by + "," + ax + "," + ay);
-        const n = (seen.get(k) || 0) + 1;
-        seen.set(k, n);
-        if (n < 2) continue;
-        repeats++;
-        if (!paintRepeats) continue;
-        ctx.strokeStyle = heat[Math.min(n - 2, heat.length - 1)];
-        ctx.globalAlpha = 0.85;
-        ctx.lineWidth = Math.min(12, 2.5 + (n - 2) * 2);
-        const [p1x, p1y] = toScreen(ax, ay, s), [p2x, p2y] = toScreen(bx, by, s);
+    // The drawing before the drag offset, so dragging doesn't search it again on every move.
+    const base = (typeof correctedBaseText !== "undefined" && correctedBaseText && text === correctedText)
+      ? correctedBaseText : null;
+    const found = findRepeats(base || text);
+    const offX = base ? manualOffsetX : 0, offY = base ? manualOffsetY : 0;
+    repeats = found.count;
+    if (paintRepeats && found.pieces.length) {
+      const zt = typeof zoomTransform === "function" ? zoomTransform(text) : null;
+      const z = zt ? zt.z : 1, zx = zt ? zt.dx : 0, zy = zt ? zt.dy : 0;
+      const at = (x, y) => toScreen((x + offX) * z + zx, (y + offY) * z + zy, s);
+      const heat = ["#ff9800", "#ff6d00", "#f4511e", "#e53935", "#c2185b"];   // 2nd, 3rd, 4th, 5th, 6th+ time
+      ctx.globalAlpha = 0.85;
+      for (const [ax, ay, bx, by, d] of found.pieces) {
+        ctx.strokeStyle = heat[Math.min(d - 1, heat.length - 1)];
+        ctx.lineWidth = Math.min(12, 2.5 + (d - 1) * 2);
+        const [p1x, p1y] = at(ax, ay), [p2x, p2y] = at(bx, by);
         ctx.beginPath(); ctx.moveTo(p1x, p1y); ctx.lineTo(p2x, p2y); ctx.stroke();
       }
+      ctx.globalAlpha = 1;
     }
-    ctx.globalAlpha = 1;
   }
   ctx.restore();
   if (enableDrag) window.__repeatCount = repeats;    // shown next to Optimize (main.js showOptimizeNote)

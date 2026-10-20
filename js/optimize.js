@@ -3,6 +3,8 @@
 // shortens the pen's trips between pieces, without changing what is drawn.
 //
 //   - a line drawn a second time (either direction)       -> drawn once
+//   - a line that runs partly over ink already there      -> only the new part is drawn
+//     (the same straight line, e.g. two 3D wireframe faces sharing part of an edge)
 //   - a dot on a spot that is already inked               -> dropped
 //   - a node in the middle of a straight run (A-B-C)      -> A-C
 //   - a pen-up to where the pen already is                -> dropped
@@ -24,6 +26,11 @@
 const OPT_SAFE = new Set(["IN", "DF", "SP", "PU", "PD", "PA", "LT", "VS", "PW", "WU", "PG", "NP",
   "PS", "RO", "IP", "SC", "IW", "IM", "AF", "AH", "CS", "CA", "SS", "SA", "SI", "SR", "SL", "DI",
   "DR", "ES", "DT"]);
+
+// A line that runs over ink already there is only trimmed when at least this much
+// of it (plotter units, 40 = 1 mm) is already drawn. Below that, going over it again
+// is quicker than the extra pen lift trimming it would cost.
+const OPT_MIN_TRIM = 40;
 
 function optimizeHPGL(text) {
   const original = text;
@@ -66,7 +73,7 @@ function optimizeHPGL(text) {
   }
   flush();
 
-  const stats = { dupLines: 0, dots: 0, nodes: 0, before: 0, after: 0 };
+  const stats = { dupLines: 0, overlaps: 0, overlapLen: 0, dots: 0, nodes: 0, before: 0, after: 0 };
   let out = [], px = null, py = null;
 
   for (const b of blocks) {
@@ -74,8 +81,12 @@ function optimizeHPGL(text) {
     const before = b.items;
     stats.before += before.length;
 
-    // 1. drop repeated lines and dots, and dots on ink
+    // 1. drop repeated lines, trim lines that run over ink already drawn on the
+    //    same straight line, and drop repeated dots and dots on ink.
+    //    Each line keeps its direction; whatever is left of it (none, one or two
+    //    pieces, or more) is drawn in its original place in the order.
     const seen = new Set(), ends = new Set(), segs = [], dots = [];
+    const inked = new Map();                    // line key -> { iv: [[s,e]...] sorted, disjoint; dx, dy, c }
     for (const [ax, ay, bx, by] of before) {
       if (ax === bx && ay === by) continue;
       ends.add(ax + "," + ay); ends.add(bx + "," + by);
@@ -87,9 +98,30 @@ function optimizeHPGL(text) {
         if (ends.has(k) || seen.has("d" + k)) { stats.dots++; continue; }
         seen.add("d" + k); dots.push(s); continue;
       }
-      const k = (ax < bx || (ax === bx && ay < by)) ? [ax, ay, bx, by].join() : [bx, by, ax, ay].join();
-      if (seen.has(k)) { stats.dupLines++; continue; }
-      seen.add(k); segs.push(s);
+      const { key, dx, dy } = optLineKey(ax, ay, bx, by);
+      let line = inked.get(key);
+      if (!line) { line = { iv: [], dx, dy, c: dy * ax - dx * ay }; inked.set(key, line); }
+      const ta = ax * dx + ay * dy, tb = bx * dx + by * dy;
+      const lo = Math.min(ta, tb), hi = Math.max(ta, tb);
+      const exact = (ax < bx || (ax === bx && ay < by)) ? [ax, ay, bx, by].join() : [bx, by, ax, ay].join();
+      const repeat = seen.has(exact);
+      seen.add(exact);
+      const gaps = optCover(line.iv, lo, hi);  // the parts not inked yet (and now marks all of it inked)
+      if (repeat) { stats.dupLines++; continue; }                      // the very same line again: always dropped
+      if (gaps.length === 1 && gaps[0][0] === lo && gaps[0][1] === hi) { segs.push(s); continue; }
+      let fresh = 0;
+      for (const [g0, g1] of gaps) fresh += g1 - g0;
+      const over = (hi - lo - fresh) / Math.sqrt(dx * dx + dy * dy);   // plotter units already inked
+      if (over < OPT_MIN_TRIM) { segs.push(s); continue; }              // not worth a pen lift: draw it whole
+      stats.overlaps++;
+      stats.overlapLen += over;
+      if (!gaps.length) continue;                                       // all of it was inked already
+      if (ta > tb) gaps.reverse();
+      for (const [g0, g1] of gaps) {
+        const [s0, s1] = ta < tb ? [g0, g1] : [g1, g0];
+        const p = optPointAt(line, s0), q = optPointAt(line, s1);
+        segs.push([p[0], p[1], q[0], q[1]]);
+      }
     }
 
     // 2. join segments into paths in their original order
@@ -243,6 +275,32 @@ function optLineKey(ax, ay, bx, by) {
   if (dx < 0 || (dx === 0 && dy < 0)) { dx = -dx; dy = -dy; }
   const c = dy * ax - dx * ay;                 // same for every point on the line
   return { key: dx + "," + dy + "," + c, dx, dy };
+}
+
+// The stretch lo..hi of one straight line is about to be drawn. iv holds the
+// stretches already inked on that line (sorted, not overlapping). Returns the
+// parts of lo..hi not inked yet, and adds lo..hi to iv.
+function optCover(iv, lo, hi) {
+  let a = 0, b = iv.length;                    // first stretch that ends at or after lo
+  while (a < b) { const m = (a + b) >> 1; if (iv[m][1] < lo) a = m + 1; else b = m; }
+  const gaps = [];
+  let at = lo, j = a, s = lo, e = hi;
+  for (; j < iv.length && iv[j][0] <= hi; j++) {
+    if (iv[j][0] > at) gaps.push([at, iv[j][0]]);
+    if (iv[j][1] > at) at = iv[j][1];
+    if (iv[j][0] < s) s = iv[j][0];
+    if (iv[j][1] > e) e = iv[j][1];
+  }
+  if (at < hi) gaps.push([at, hi]);
+  iv.splice(a, j - a, [s, e]);
+  return gaps;
+}
+
+// The whole-number point at position t along a line from optLineKey.
+// (t = x*dx + y*dy and c = dy*x - dx*y, solved for x and y.)
+function optPointAt(line, t) {
+  const { dx, dy, c } = line, L = dx * dx + dy * dy;
+  return [Math.round((t * dx + c * dy) / L), Math.round((t * dy - c * dx) / L)];
 }
 
 function optAdd(b, ax, ay, bx, by) {
