@@ -139,7 +139,7 @@ let repeatCache = { text: null, result: null };
 function findRepeats(text) {
   if (repeatCache.text === text) return repeatCache.result;
   const gcd = (a, b) => { a = Math.abs(a); b = Math.abs(b); while (b) [a, b] = [b, a % b]; return a; };
-  const lines = new Map();                        // pen + line -> stretches inked so far [{ s, e, d }] sorted
+  const lines = new Map();                        // line -> pen -> stretches inked so far [{ s, e, d }] sorted
   const exact = new Set();
   const pieces = [];
   let count = 0;
@@ -159,17 +159,24 @@ function findRepeats(text) {
       if (Number.isInteger(ax) && Number.isInteger(ay) && Number.isInteger(bx) && Number.isInteger(by)) {
         let dx = bx - ax, dy = by - ay; const g = gcd(dx, dy); dx /= g; dy /= g;
         if (dx < 0 || (dx === 0 && dy < 0)) { dx = -dx; dy = -dy; }
-        key = path.pen + "|" + dx + "," + dy + "," + (dy * ax - dx * ay);
+        key = dx + "," + dy + "," + (dy * ax - dx * ay);
         ta = ax * dx + ay * dy; tb = bx * dx + by * dy; per = 1 / Math.hypot(dx, dy);
       } else {
-        key = ek; ta = 0; tb = 1; per = Math.hypot(bx - ax, by - ay);
+        key = ek.slice(ek.indexOf(":") + 1); ta = 0; tb = 1; per = Math.hypot(bx - ax, by - ay);
       }
-      if (!lines.has(key)) lines.set(key, []);
+      if (!lines.has(key)) lines.set(key, new Map());
+      const pens = lines.get(key);
+      if (!pens.has(path.pen)) pens.set(path.pen, []);
       const lo = Math.min(ta, tb), hi = Math.max(ta, tb);
-      const over = repeatCover(lines.get(key), lo, hi);   // [[s, e, times-before]...] inside lo..hi
+      const over = repeatCover(pens.get(path.pen), lo, hi);   // [[s, e, times-before]...] inside lo..hi
+      // This pen's ink is now on top here: another pen going over it later is new ink
+      // again (Optimize keeps those, so colours stay on top in the same order).
+      for (const [p, list] of pens) if (p !== path.pen) repeatUncover(list, lo, hi);
       let len = 0;
       for (const [s0, s1] of over) len += (s1 - s0) * per;
-      if (!same && len < REPEAT_MIN_OVERLAP) continue;
+      const whole = over.length && over[0][0] === lo && over[over.length - 1][1] === hi &&
+                    over.every((v, k) => k === 0 || v[0] === over[k - 1][1]);
+      if (!(same && whole) && len < REPEAT_MIN_OVERLAP) continue;
       count++;
       const at = (t) => { const f = (t - ta) / (tb - ta); return [ax + (bx - ax) * f, ay + (by - ay) * f]; };
       for (const [s0, s1, d] of over) { const p = at(s0), q = at(s1); pieces.push([p[0], p[1], q[0], q[1], d]); }
@@ -204,6 +211,19 @@ function repeatCover(list, lo, hi) {
   for (const n of next) list.push(n);
   for (const r of rest) list.push(r);
   return over;
+}
+
+// Another pen has drawn over lo..hi of this line: take it out of this pen's stretches.
+function repeatUncover(list, lo, hi) {
+  if (!list.length) return;
+  const keep = [];
+  for (const p of list) {
+    if (p.e <= lo || p.s >= hi) { keep.push(p); continue; }
+    if (p.s < lo) keep.push({ s: p.s, e: lo, d: p.d });
+    if (p.e > hi) keep.push({ s: hi, e: p.e, d: p.d });
+  }
+  list.length = 0;
+  for (const p of keep) list.push(p);
 }
 
 // Which way plotter +Y points on screen (−1 = right, +1 = left). Set by renderPreview

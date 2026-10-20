@@ -906,6 +906,7 @@ function showOptimizeNote() {
     `${f(t.dupLines)} repeated lines, ${f(t.dots)} dots on ink, ${f(t.nodes)} extra nodes on straight lines\n` +
     (t.overlaps ? `${f(t.overlaps)} lines trimmed where they ran over ink already drawn ` +
                   `(${(t.overlapLen / IN_TO_PU).toFixed(1)} in of ink not drawn twice)\n` : "") +
+    (t.spDropped ? `${f(t.spDropped)} pen and line-type commands left out (they repeated the one already set)\n` : "") +
     `pen-down lines ${f(t.before)} → ${f(t.after)}\n` +
     `pen lifts ${f(t.liftsBefore)} → ${f(t.liftsAfter)}\n` +
     `pen-up travel ${f(Math.round(t.travelBefore / 400))} → ${f(Math.round(t.travelAfter / 400))} in\n` +

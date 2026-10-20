@@ -12,13 +12,16 @@
 //
 // Only plain absolute moves are touched (PU, PD, PA). Every other command
 // (SP, LT, VS, PW, ...) stays exactly where it was, and pieces never move
-// across it, so colours still go down in the same order. Files that use
+// across it, so colours still go down in the same order. The one exception: an
+// SP for the pen already in hand is left out (some files repeat it before every
+// line). A line already drawn with the same pen earlier in the file is left out
+// too, unless another pen has drawn over it since. Files that use
 // anything this can't follow (relative moves, arcs, circles, labels,
 // scaling...) are passed through unchanged.
 //
 // Before handing anything back, it checks that the new file inks exactly
-// the same lines and dots as the original, pen by pen. If not, it returns
-// the original and says so.
+// the same lines and dots as the original, pen by pen (and line type by line
+// type). If not, it returns the original and says so.
 
 // Settings that may sit between pieces (kept in place; pieces never cross them).
 // Anything not listed here (PR, arcs, circles, labels, symbols, fills...) means
@@ -51,10 +54,29 @@ function optimizeHPGL(text) {
 
   // Walk the file: moves go into the current block as segments/dots;
   // any other command closes the block and is kept as it is.
-  const blocks = [];          // { items: [[ax,ay,bx,by]...] } | { raw }
-  let cur = { items: [] }, penDown = false, x = 0, y = 0;
-  const flush = () => { if (cur.items.length) blocks.push(cur); cur = { items: [] }; };
-  for (const c of cmds) {
+  // A setting that repeats the value already set (SP for the pen already in hand,
+  // or the same LT, PW or VS again) is left out: it changes nothing, and some files put "LT;SP1;" before every line, which would cut the
+  // drawing into thousands of blocks that can't be tidied together.
+  // Each block remembers its "style": the pen, line type and pen width it draws with.
+  const blocks = [];          // { items: [[ax,ay,bx,by]...], style } | { raw }
+  let penDown = false, x = 0, y = 0;
+  let pen = null, lt = "", pw = "";
+  const set = {};                               // last value of SP/LT/PW/VS (unknown until the file sets it)
+  const style = () => pen + "|" + lt + "|" + pw;
+  let cur = { items: [], style: style() };
+  const flush = () => { if (cur.items.length) blocks.push(cur); cur = { items: [], style: style() }; };
+  let spDropped = 0;
+  // the next pen command after command i lifts the pen (PU before any PD/PA)
+  const liftsNext = (i) => {
+    for (let k = i + 1; k < cmds.length; k++) {
+      const op = cmds[k].op;
+      if (op === "PU") return true;
+      if (op === "PD" || op === "PA") return false;
+    }
+    return true;
+  };
+  for (let ci = 0; ci < cmds.length; ci++) {
+    const c = cmds[ci];
     if (c.op === "PU" || c.op === "PD" || c.op === "PA") {
       if (c.op !== "PA") penDown = c.op === "PD";
       if (!c.args) continue;
@@ -66,15 +88,37 @@ function optimizeHPGL(text) {
         x = n[i]; y = n[i + 1];
       }
     } else {
+      if (c.op === "SP" || c.op === "LT" || c.op === "PW" || c.op === "VS") {
+        const v = c.op === "SP" ? String(optPenNumber(c.args)) : c.args.replace(/\s+/g, "");
+        // LT, PW, VS: the same value again changes nothing. SP: only left out when the
+        // pen is up or goes up next, so it doesn't matter whether SP lifts the pen.
+        if (set[c.op] === v && (c.op !== "SP" || !penDown || liftsNext(ci))) { spDropped++; continue; }
+        set[c.op] = v;
+      }
       flush();
       blocks.push({ raw: c.raw });
-      if (c.op === "IN" || c.op === "DF") { penDown = false; }
+      if (c.op === "IN" || c.op === "DF") {
+        penDown = false; lt = ""; pw = "";
+        delete set.LT; delete set.PW; delete set.VS;
+        if (c.op === "IN") { pen = null; delete set.SP; }
+      }
+      else if (c.op === "SP") pen = optPenNumber(c.args);
+      else if (c.op === "LT") lt = c.args;
+      else if (c.op === "PW") pw = c.args;
+      cur.style = style();
     }
   }
   flush();
 
-  const stats = { dupLines: 0, overlaps: 0, overlapLen: 0, dots: 0, nodes: 0, before: 0, after: 0 };
+  const stats = { dupLines: 0, overlaps: 0, overlapLen: 0, dots: 0, nodes: 0, before: 0, after: 0, spDropped };
   let out = [], px = null, py = null;
+
+  // Ink laid down so far, for the whole file: line key -> style -> { iv: [[s,e]...] sorted,
+  // not overlapping }. A line is only left out when the same pen (and line type) has
+  // already drawn it and no other pen has gone over it since, so colours still end
+  // up on top in the same order.
+  const inkLines = new Map();
+  const seenExact = new Map();                  // style -> Set of lines drawn (exact ends)
 
   for (const b of blocks) {
     if (b.raw) { out.push(b.raw); continue; }
@@ -85,37 +129,44 @@ function optimizeHPGL(text) {
     //    same straight line, and drop repeated dots and dots on ink.
     //    Each line keeps its direction; whatever is left of it (none, one or two
     //    pieces, or more) is drawn in its original place in the order.
-    const seen = new Set(), ends = new Set(), segs = [], dots = [];
-    const inked = new Map();                    // line key -> { iv: [[s,e]...] sorted, disjoint; dx, dy, c }
+    if (!seenExact.has(b.style)) seenExact.set(b.style, new Set());
+    const seen = seenExact.get(b.style), ends = new Set(), dotSeen = new Set(), segs = [], dots = [];
     for (const [ax, ay, bx, by] of before) {
       if (ax === bx && ay === by) continue;
       ends.add(ax + "," + ay); ends.add(bx + "," + by);
     }
+    // what this line draws is now on top: other pens' ink there no longer counts
+    const drawn = (key, s0, s1) => {
+      for (const [st, line] of inkLines.get(key)) if (st !== b.style) optUncover(line.iv, s0, s1);
+    };
     for (const s of before) {
       const [ax, ay, bx, by] = s;
       if (ax === bx && ay === by) {
         const k = ax + "," + ay;
-        if (ends.has(k) || seen.has("d" + k)) { stats.dots++; continue; }
-        seen.add("d" + k); dots.push(s); continue;
+        if (ends.has(k) || dotSeen.has(k)) { stats.dots++; continue; }
+        dotSeen.add(k); dots.push(s); continue;
       }
       const { key, dx, dy } = optLineKey(ax, ay, bx, by);
-      let line = inked.get(key);
-      if (!line) { line = { iv: [], dx, dy, c: dy * ax - dx * ay }; inked.set(key, line); }
+      if (!inkLines.has(key)) inkLines.set(key, new Map());
+      const styles = inkLines.get(key);
+      let line = styles.get(b.style);
+      if (!line) { line = { iv: [], dx, dy, c: dy * ax - dx * ay }; styles.set(b.style, line); }
       const ta = ax * dx + ay * dy, tb = bx * dx + by * dy;
       const lo = Math.min(ta, tb), hi = Math.max(ta, tb);
       const exact = (ax < bx || (ax === bx && ay < by)) ? [ax, ay, bx, by].join() : [bx, by, ax, ay].join();
-      const repeat = seen.has(exact);
+      const drawnBefore = seen.has(exact);
       seen.add(exact);
       const gaps = optCover(line.iv, lo, hi);  // the parts not inked yet (and now marks all of it inked)
-      if (repeat) { stats.dupLines++; continue; }                      // the very same line again: always dropped
-      if (gaps.length === 1 && gaps[0][0] === lo && gaps[0][1] === hi) { segs.push(s); continue; }
+      if (drawnBefore && !gaps.length) { stats.dupLines++; continue; } // the very same line again: always dropped
+      if (gaps.length === 1 && gaps[0][0] === lo && gaps[0][1] === hi) { segs.push(s); drawn(key, lo, hi); continue; }
       let fresh = 0;
       for (const [g0, g1] of gaps) fresh += g1 - g0;
       const over = (hi - lo - fresh) / Math.sqrt(dx * dx + dy * dy);   // plotter units already inked
-      if (over < OPT_MIN_TRIM) { segs.push(s); continue; }              // not worth a pen lift: draw it whole
+      if (over < OPT_MIN_TRIM) { segs.push(s); drawn(key, lo, hi); continue; } // not worth a pen lift: draw it whole
       stats.overlaps++;
       stats.overlapLen += over;
       if (!gaps.length) continue;                                       // all of it was inked already
+      for (const [g0, g1] of gaps) drawn(key, g0, g1);
       if (ta > tb) gaps.reverse();
       for (const [g0, g1] of gaps) {
         const [s0, s1] = ta < tb ? [g0, g1] : [g1, g0];
@@ -209,10 +260,13 @@ function optimizeHPGL(text) {
   stats.liftsBefore = t0.lifts; stats.liftsAfter = t1.lifts;
   stats.travelBefore = t0.travel; stats.travelAfter = t1.travel;
 
-  // Check: same ink, block by block, or give back the original.
+  // Check: each pen (and line type) inks exactly the same lines and dots as in the
+  // original, or give back the original.
   const a = optInk(text), b2 = optInk(result);
-  if (!a || !b2 || a.length !== b2.length) return { text: original, ok: false, reason: "check failed" };
-  for (let i = 0; i < a.length; i++) if (!optSameInk(a[i], b2[i])) return { text: original, ok: false, reason: "check failed" };
+  if (a.size !== b2.size) return { text: original, ok: false, reason: "check failed" };
+  for (const [st, ink] of a) {
+    if (!b2.has(st) || !optSameInk(ink, b2.get(st))) return { text: original, ok: false, reason: "check failed" };
+  }
   return { text: pre + result, ok: true, stats };
 }
 
@@ -236,13 +290,18 @@ function optTravel(text) {
   return { lifts, travel: Math.round(travel) };
 }
 
-// Ink per block: each straight line as a stretch of an exact integer line,
-// overlapping stretches merged; dots kept unless they sit on a stretch.
+// Ink per pen: for each pen (with its line type and width), every straight line as a
+// stretch of an exact integer line, overlapping stretches merged; dots kept unless
+// they sit on a stretch of the same pen. Returns a Map: style -> { lines, dots }.
 function optInk(text) {
-  const blocks = []; let cur = { lines: new Map(), dots: [] };
-  let penDown = false, x = 0, y = 0;
+  const inks = new Map();
+  let penDown = false, x = 0, y = 0, pen = null, lt = "", pw = "";
+  const ink = () => {
+    const st = pen + "|" + lt + "|" + pw;
+    if (!inks.has(st)) inks.set(st, { lines: new Map(), dots: [] });
+    return inks.get(st);
+  };
   const re = /([A-Za-z]{2})([^;A-Za-z]*);?/g; let m;
-  const close = () => { if (cur.lines.size || cur.dots.length) blocks.push(cur); cur = { lines: new Map(), dots: [] }; };
   while ((m = re.exec(text))) {
     const op = m[1].toUpperCase(), args = m[2].trim();
     if (op === "PU" || op === "PD" || op === "PA") {
@@ -250,13 +309,15 @@ function optInk(text) {
       if (!args) continue;
       const n = args.split(/[\s,]+/).filter(Boolean).map(Number);
       for (let i = 0; i < n.length; i += 2) {
-        if (penDown) optAdd(cur, x, y, n[i], n[i + 1]);
+        if (penDown) optAdd(ink(), x, y, n[i], n[i + 1]);
         x = n[i]; y = n[i + 1];
       }
-    } else { close(); if (op === "IN" || op === "DF") penDown = false; }
+    } else if (op === "IN" || op === "DF") { penDown = false; lt = ""; pw = ""; if (op === "IN") pen = null; }
+    else if (op === "SP") pen = optPenNumber(args);
+    else if (op === "LT") lt = args;
+    else if (op === "PW") pw = args;
   }
-  close();
-  for (const b of blocks) {
+  for (const b of inks.values()) {
     for (const [k, iv] of b.lines) {
       iv.sort((p, q) => p[0] - q[0]);
       const mg = [];
@@ -265,7 +326,27 @@ function optInk(text) {
     }
     b.dots = [...new Set(b.dots.filter(([dx, dy]) => !optOnInk(b, dx, dy)).map((d) => d.join()))].sort();
   }
-  return blocks;
+  for (const [st, b] of inks) if (!b.lines.size && !b.dots.length) inks.delete(st);
+  return inks;
+}
+
+// The pen an SP command picks ("SP;" is pen 0, put the pen away).
+function optPenNumber(args) {
+  const n = parseInt(args, 10);
+  return Number.isFinite(n) ? n : 0;
+}
+
+// Takes lo..hi out of a line's inked stretches (another pen has drawn over it).
+function optUncover(iv, lo, hi) {
+  if (!iv.length || hi <= lo) return;
+  const keep = [];
+  for (const [s, e] of iv) {
+    if (e <= lo || s >= hi) { keep.push([s, e]); continue; }
+    if (s < lo) keep.push([s, lo]);
+    if (e > hi) keep.push([hi, e]);
+  }
+  iv.length = 0;
+  for (const v of keep) iv.push(v);
 }
 
 function optGcd(a, b) { a = Math.abs(a); b = Math.abs(b); while (b) [a, b] = [b, a % b]; return a; }
