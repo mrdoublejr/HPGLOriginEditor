@@ -276,7 +276,8 @@ function renderPreview(text, plotterKey, modeKey, mediaKey, targetBox,
 
   // ── Canvas size: use the real size of the box, so text stays readable ──
   // Room around the page: origin star on the edges, dimension labels bottom/right.
-  const padL = isEdge ? 20 : 12, padT = 22;
+  // The corrected preview has no info line on top (room is short), so it needs less there.
+  const padL = isEdge ? 20 : 12, padT = enableDrag ? 8 : 22;
   const padR = 30, padB = 26;
 
   targetBox.innerHTML = "";
@@ -521,14 +522,18 @@ function renderPreview(text, plotterKey, modeKey, mediaKey, targetBox,
   // ── Dimension labels: the long side along the bottom, the short side down the right ──
   drawDimensions(ctx, page, media, turned, !!p.xAlongFeed);
 
-  ctx.save();
-  ctx.font = "11px system-ui, sans-serif";
-  ctx.fillStyle = "#777";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  const infoText = (ctx.measureText(infoFull).width <= canvasW - 150) ? infoFull : infoShort;
-  ctx.fillText(infoText, canvasW / 2, 11);
-  ctx.restore();
+  // Info line on top: original preview only. For the corrected one the same details
+  // are already on the page (plotter info, Size %), and the drawing gets the room.
+  if (!enableDrag) {
+    ctx.save();
+    ctx.font = "11px system-ui, sans-serif";
+    ctx.fillStyle = "#777";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    const infoText = (ctx.measureText(infoFull).width <= canvasW - 150) ? infoFull : infoShort;
+    ctx.fillText(infoText, canvasW / 2, 11);
+    ctx.restore();
+  }
 
   if (enableDrag) attachDragHandlers();
 }
