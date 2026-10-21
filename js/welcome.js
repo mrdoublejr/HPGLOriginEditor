@@ -61,7 +61,7 @@
   }
 
   document.addEventListener("DOMContentLoaded", function () {
-    // the small button, top centre, as the first thing in the header
+    // the small button, first thing in the header (CSS puts it under the ? button on wider screens)
     pill = document.createElement("button");
     pill.type = "button";
     pill.className = "welcome-pill";

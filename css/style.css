@@ -614,8 +614,13 @@ html[data-theme="dark"] .help-bubble { background: #2b2f38; color: #e3e5ea; bord
 html[data-theme="dark"] .welcome-dialog { background: #1e2128; color: #dadde2; border-color: #30343d; }
 
 
-/* The welcome message rolled up: a small button at the top centre (js/welcome.js) */
+/* The welcome message rolled up: a small button (js/welcome.js). On wider screens it sits
+   under the ? and theme buttons at the top right, so it takes no height from the previews;
+   on narrow screens it stays in its own row at the top centre. */
 .welcome-pill-row { flex-basis: 100%; display: flex; justify-content: center; margin-bottom: 4px; }
+@media (min-width: 901px) {
+  .welcome-pill-row { position: fixed; top: 50px; right: 12px; z-index: 50; margin: 0; flex-basis: auto; }
+}
 .welcome-pill {
   font: 600 0.78rem/1 system-ui, sans-serif; padding: 5px 12px; border-radius: 999px;
   border: 1px solid #e3d9a6; background: #fff8e1; color: #6b5a14; cursor: pointer;
