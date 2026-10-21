@@ -26,6 +26,28 @@ export async function ensurePlotTables(db) {
   await db.prepare(
     "CREATE TABLE IF NOT EXISTS plot_queue_state (key TEXT PRIMARY KEY, value TEXT)"
   ).run();
+  await ensureProgressColumns(db);
+}
+
+// Progress of a job while the Pi sends it (POST /pi/progress): bytes and pen-down moves
+// sent so far and in all, seconds since it started, and when the Pi last reported.
+// Added to tables made before progress existed; checked once per worker.
+const PROGRESS_COLUMNS = {
+  sent: "INTEGER", total: "INTEGER", moves: "INTEGER", moves_total: "INTEGER",
+  elapsed: "INTEGER", progress_at: "TEXT",
+};
+let progressColumnsChecked = false;
+async function ensureProgressColumns(db) {
+  if (progressColumnsChecked) return;
+  const { results } = await db.prepare("PRAGMA table_info(plot_jobs)").all();
+  const have = new Set((results || []).map((c) => c.name));
+  for (const [name, type] of Object.entries(PROGRESS_COLUMNS)) {
+    if (!have.has(name)) {
+      try { await db.prepare(`ALTER TABLE plot_jobs ADD COLUMN ${name} ${type}`).run(); }
+      catch (e) { /* another request added it first */ }
+    }
+  }
+  progressColumnsChecked = true;
 }
 
 export const jobKey = (id) => "plotjobs/" + id;

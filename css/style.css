@@ -449,6 +449,11 @@ html[data-theme="dark"] .plot-dialog { background: #1e2128; color: #e3e5ea; bord
 html[data-theme="dark"] .plot-dialog .pd-more { color: #a3a8b3; }
 
 .plot-status { font-size: 0.8rem; color: #555; }
+/* Stop button next to the plot status while a job runs (js/plot.js) */
+.plot-stop { font-size: 0.8rem; padding: 3px 9px; color: #c0392b; border-color: #e3b4ae; }
+.plot-stop:hover:not(:disabled) { background: #c0392b; color: #fff; border-color: #c0392b; }
+.plot-stop:disabled { opacity: 0.5; cursor: default; }
+.plot-stop[hidden] { display: none; }
 .plot-status.ok { color: #1a7f37; }
 .plot-status.warn { color: #b8801a; }
 .plot-status.err { color: #c0392b; }
@@ -533,6 +538,7 @@ html[data-theme="dark"] .btn-plot { background: transparent; color: #4cc274; bor
 html[data-theme="dark"] .btn-plot:hover:not(:disabled) { background: #1a7f37; color: #fff; }
 html[data-theme="dark"] .status,
 html[data-theme="dark"] .plot-status { color: #a3a8b3; }
+html[data-theme="dark"] .plot-stop { color: #f08a7e; border-color: #6b3a35; }
 html[data-theme="dark"] .status.warn { color: #e0a84a; }
 html[data-theme="dark"] .opt-stats { color: #5cc77a; }
 html[data-theme="dark"] .opt-stats.warn { color: #e0a84a; }

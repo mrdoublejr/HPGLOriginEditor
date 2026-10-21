@@ -5,6 +5,9 @@
 // which needs the Cloudflare Access sign-in used for the admin pages.
 // With Optimize off, it first checks whether the drawing goes over ink already
 // there and, if so, offers to optimize it before plotting.
+// While a job plots, it shows how far along it is (the Pi reports every few seconds,
+// see functions/pi/progress.js) and a Stop button. A job that is still running when
+// the page opens is picked up again.
 
 (function () {
   // Site plotter -> the name the Pi knows it by.
@@ -24,6 +27,49 @@
     out.className = "plot-status" + (cls ? " " + cls : "");
   }
 
+  // Stop button, shown next to the status while a job is queued or plotting.
+  const stopBtn = document.createElement("button");
+  stopBtn.type = "button";
+  stopBtn.className = "icon-btn plot-stop";
+  stopBtn.textContent = "■ Stop";
+  stopBtn.hidden = true;
+  out.after(stopBtn);
+  let watching = 0;                       // id of the job being watched
+  stopBtn.addEventListener("click", async () => {
+    if (!watching) return;
+    if (!confirm("Stop this plot? The plotter finishes the little it already has, then lifts the pen and puts it away.")) return;
+    stopBtn.disabled = true;
+    try {
+      await fetch("/admin/api/plot", { method: "POST", headers: { "Content-Type": "application/json" },
+                                       body: JSON.stringify({ action: "stop", id: watching }) });
+    } catch (e) { stopBtn.disabled = false; }
+  });
+
+  const f = (v) => Number(v).toLocaleString();
+  function minutes(sec) {
+    if (!isFinite(sec) || sec < 0) return "";
+    if (sec < 90) return "under 2 min";
+    if (sec < 3600) return Math.round(sec / 60) + " min";
+    const h = Math.floor(sec / 3600), m = Math.round((sec % 3600) / 60);
+    return h + " h " + m + " min";
+  }
+  // "Plotting… 41% · 31,200 of 76,209 moves · about 18 min left"
+  function progressText(job) {
+    if (job.moves_total) {
+      const done = Math.min(job.moves, job.moves_total);
+      const pct = Math.floor(100 * done / job.moves_total);
+      let t = `Plotting… ${pct}% · ${f(done)} of ${f(job.moves_total)} moves`;
+      if (job.elapsed > 20 && done > 0) {
+        const left = job.elapsed * (job.moves_total - done) / done;
+        t += ` · about ${minutes(left)} left`;
+      }
+      if (job.elapsed) t += ` · ${minutes(job.elapsed)} so far`;
+      return t;
+    }
+    if (job.total) return `Plotting… ${Math.floor(100 * job.sent / job.total)}% sent`;
+    return "Plotting…";
+  }
+
   // UTC "YYYY-MM-DD HH:MM:SS" from the database -> seconds ago
   function secondsSince(s) {
     const t = Date.parse(String(s || "").replace(" ", "T") + "Z");
@@ -38,38 +84,59 @@
   }
 
   async function check() {
+    let list = null;
     try {
       const r = await fetch("/admin/api/plot", { cache: "no-store", redirect: "manual" });
       signedIn = r.ok && (r.headers.get("Content-Type") || "").includes("json");
+      if (signedIn) list = await r.json();
     } catch (e) { signedIn = false; }
     window.__sptOwner = signedIn;          // main.js leaves the owner's own use out of the activity log
     refresh();
+    // a job still waiting or plotting (from before this page was opened): show it again
+    const live = list && (list.jobs || []).find((j) => ["queued", "sending", "stopping"].includes(j.status));
+    if (live && !busy) {
+      busy = true; refresh();
+      say("Plot " + (live.name || "") + ": checking…");
+      try { await poll(live.id); } finally { busy = false; refresh(); }
+    }
   }
 
   async function poll(id) {
-    const started = Date.now();
-    while (Date.now() - started < 60 * 60 * 1000) {        // give up watching after an hour
-      await new Promise((ok) => setTimeout(ok, 3000));
-      let j;
-      try {
-        const r = await fetch("/admin/api/plot?id=" + id, { cache: "no-store" });
-        if (!r.ok) continue;
-        j = await r.json();
-      } catch (e) { continue; }
-      const job = j.job, piAway = secondsSince(j.piSeen) > 60;
-      if (job.status === "queued") {
-        say(piAway ? "Waiting: the Pi hasn't checked in for a while (is it on?)" : "Queued…", piAway ? "warn" : "");
-      } else if (job.status === "sending") {
-        say("Plotting…");
-      } else if (job.status === "done") {
-        say("Sent to the plotter ✓", "ok"); return;
-      } else if (job.status === "failed") {
-        say("Failed: " + (job.message || "unknown error"), "err"); return;
-      } else if (job.status === "cancelled") {
-        say("Cancelled"); return;
+    watching = id;
+    stopBtn.hidden = false; stopBtn.disabled = false;
+    try {
+      const started = Date.now();
+      while (Date.now() - started < 12 * 60 * 60 * 1000) {   // give up watching after 12 hours
+        await new Promise((ok) => setTimeout(ok, 3000));
+        let j;
+        try {
+          const r = await fetch("/admin/api/plot?id=" + id, { cache: "no-store" });
+          if (!r.ok) continue;
+          j = await r.json();
+        } catch (e) { continue; }
+        const job = j.job, piAway = secondsSince(j.piSeen) > 60;
+        if (job.status === "queued") {
+          say(piAway ? "Waiting: the Pi hasn't checked in for a while (is it on?)" : "Queued…", piAway ? "warn" : "");
+        } else if (job.status === "sending") {
+          const quiet = job.progress_at ? secondsSince(job.progress_at) : 0;
+          if (quiet > 60) say(progressText(job) + ` · no word from the Pi for ${minutes(quiet)}`, "warn");
+          else say(progressText(job));
+        } else if (job.status === "stopping") {
+          say("Stopping… (the plotter finishes what it already has, then lifts the pen)", "warn");
+          stopBtn.disabled = true;
+        } else if (job.status === "done") {
+          say("Plotted ✓" + (job.elapsed ? " in " + minutes(job.elapsed) : ""), "ok"); return;
+        } else if (job.status === "failed") {
+          say("Failed: " + (job.message || "unknown error"), "err"); return;
+        } else if (job.status === "cancelled") {
+          say(job.message ? "Stopped: " + job.message : "Cancelled"); return;
+        }
       }
+      say("Still not finished; check the Pi");
+    } finally {
+      watching = 0;
+      stopBtn.hidden = true;
     }
-    say("Still not finished; check the admin page");
   }
 
   // Optimize is off and the drawing goes over ink already there: ask before plotting.

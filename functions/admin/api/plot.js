@@ -3,6 +3,9 @@
 // GET  /admin/api/plot?id=N     : one job (the button polls this for its status)
 // POST /admin/api/plot          : {plotter, name, text}  -> queues a job, returns {id}
 // POST /admin/api/plot          : {action: "cancel", id} -> cancels a job that hasn't started
+// POST /admin/api/plot          : {action: "stop", id}   -> a waiting job is cancelled; one being
+//                                  plotted is marked "stopping", and the Pi stops it at its next
+//                                  progress report (/pi/progress), then reports it "cancelled"
 // Protected by ../_middleware.js (Cloudflare Access), like the rest of /admin/.
 import { PLOTTERS, MAX_BYTES, json, ensurePlotTables, jobKey } from "../../_plotjobs.js";
 
@@ -32,6 +35,18 @@ export async function onRequestPost({ request, env }) {
   await ensurePlotTables(env.DB);
   let body;
   try { body = await request.json(); } catch (e) { return json(400, { error: "bad request" }); }
+
+  if (body.action === "stop") {
+    const id = +body.id;
+    const q = await env.DB.prepare(
+      "UPDATE plot_jobs SET status = 'cancelled', updated = datetime('now') WHERE id = ? AND status = 'queued'"
+    ).bind(id).run();
+    if (q.meta && q.meta.changes) { await env.MY_BUCKET.delete(jobKey(id)); return json(200, { ok: true, status: "cancelled" }); }
+    const r = await env.DB.prepare(
+      "UPDATE plot_jobs SET status = 'stopping', updated = datetime('now') WHERE id = ? AND status = 'sending'"
+    ).bind(id).run();
+    return json(200, { ok: true, status: r.meta && r.meta.changes ? "stopping" : "unchanged" });
+  }
 
   if (body.action === "cancel") {
     const r = await env.DB.prepare(

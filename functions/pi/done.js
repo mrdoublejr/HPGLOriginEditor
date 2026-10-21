@@ -1,6 +1,7 @@
-// POST /pi/done : {id, ok: true|false, message}
-// The Pi reports how a job went. A finished job's file is removed from R2; a failed
-// one is kept so it can be looked at.
+// POST /pi/done : {id, ok: true|false, stopped: true|false, message}
+// The Pi reports how a job went. A finished (or stopped) job's file is removed from R2;
+// a failed one is kept so it can be looked at. "stopped" means Stop was pressed on the
+// site while it was plotting: the job ends up "cancelled".
 import { json, ensurePlotTables, jobKey } from "../_plotjobs.js";
 
 export async function onRequestPost({ request, env }) {
@@ -11,7 +12,7 @@ export async function onRequestPost({ request, env }) {
   await ensurePlotTables(env.DB);
   await env.DB.prepare(
     "UPDATE plot_jobs SET status = ?, message = ?, updated = datetime('now') WHERE id = ?"
-  ).bind(b.ok ? "done" : "failed", String(b.message || "").slice(0, 500), id).run();
-  if (b.ok) await env.MY_BUCKET.delete(jobKey(id));
+  ).bind(b.stopped ? "cancelled" : b.ok ? "done" : "failed", String(b.message || "").slice(0, 500), id).run();
+  if (b.ok || b.stopped) await env.MY_BUCKET.delete(jobKey(id));
   return json(200, { ok: true });
 }
