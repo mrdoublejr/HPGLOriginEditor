@@ -1,6 +1,7 @@
 // GET /pi/next?plotters=750c,7585b
-// The Pi asks for work. Records that the Pi is alive, then hands over the oldest queued
-// job for one of the plotters it serves (marking it "sending"), or 204 if there is none.
+// The Pi asks for work. Records that the Pi is alive, clears jobs left "sending" by a
+// plot that was cut off, then hands over the oldest queued job for one of the plotters
+// it serves (marking it "sending"), or 204 if there is none.
 import { PLOTTERS, json, ensurePlotTables } from "../_plotjobs.js";
 
 export async function onRequestGet({ request, env }) {
@@ -14,6 +15,13 @@ export async function onRequestGet({ request, env }) {
   if (!want.length) return new Response(null, { status: 204 });
 
   const marks = want.map(() => "?").join(",");
+  // The Pi plots one job at a time, so when it asks for work nothing of its is still
+  // being sent. A job still marked "sending" or "stopping" was cut off (the Pi or its
+  // service restarted mid-plot) and would otherwise look busy for ever.
+  await env.DB.prepare(
+    "UPDATE plot_jobs SET status = 'failed', message = 'the Pi stopped before finishing it'," +
+    " updated = datetime('now') WHERE status IN ('sending', 'stopping') AND plotter IN (" + marks + ")"
+  ).bind(...want).run();
   const job = await env.DB.prepare(
     "UPDATE plot_jobs SET status = 'sending', updated = datetime('now') WHERE id = (" +
     " SELECT id FROM plot_jobs WHERE status = 'queued' AND plotter IN (" + marks + ")" +

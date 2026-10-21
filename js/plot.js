@@ -94,20 +94,23 @@
     refresh();
     // a job still waiting or plotting (from before this page was opened): show it again
     const live = list && (list.jobs || []).find((j) => ["queued", "sending", "stopping"].includes(j.status));
-    if (live && !busy) {
-      busy = true; refresh();
+    // (the Plot button stays usable: a new job just waits its turn behind this one)
+    if (live && !watching) {
       say("Plot " + (live.name || "") + ": checking…");
-      try { await poll(live.id); } finally { busy = false; refresh(); }
+      await poll(live.id);
     }
   }
 
+  let watchSeq = 0;                       // a newer job takes over the status line from an older one
   async function poll(id) {
+    const mine = ++watchSeq;
     watching = id;
     stopBtn.hidden = false; stopBtn.disabled = false;
     try {
       const started = Date.now();
       while (Date.now() - started < 12 * 60 * 60 * 1000) {   // give up watching after 12 hours
         await new Promise((ok) => setTimeout(ok, 3000));
+        if (mine !== watchSeq) return;
         let j;
         try {
           const r = await fetch("/admin/api/plot?id=" + id, { cache: "no-store" });
@@ -134,8 +137,7 @@
       }
       say("Still not finished; check the Pi");
     } finally {
-      watching = 0;
-      stopBtn.hidden = true;
+      if (mine === watchSeq) { watching = 0; stopBtn.hidden = true; }
     }
   }
 
