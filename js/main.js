@@ -253,6 +253,7 @@ function loadFile(file) {
   const reader = new FileReader();
   reader.onload = (e) => {
     currentText = e.target.result;
+    showPlotterPicture(PLOTTERS[plotterSelect.value]);   // hides it: the original preview gets its room
     fileNameEl.textContent = file.name;
     fileSizeEl.textContent = (file.size / 1024).toFixed(1) + " KB";
     const bbox = getBBox(currentText);
@@ -665,7 +666,8 @@ function showPlotterPicture(p) {
   if (!fig) return;
   const src = p.picture;
   const request = ++pictureRequest;
-  if (!src) { fig.hidden = true; return; }
+  // No picture, or a file is loaded: the original preview needs the room more.
+  if (!src || currentText) { fig.hidden = true; return; }
 
   caption.textContent = p.pictureCaption || p.name;
   fig.hidden = false;
@@ -681,11 +683,19 @@ function showPlotterPicture(p) {
 
   img.hidden = true;
   canvas.hidden = false;
-  const draw = (text) => { if (request === pictureRequest) drawPicturePlot(canvas, text); };
+  // Only draw it if it really is a plot. A missing file can come back as the site's
+  // own web page (Cloudflare Pages answers unknown paths with index.html), which
+  // would otherwise leave an empty box taking the original preview's room.
+  const draw = (text) => {
+    if (request !== pictureRequest) return;
+    if (/^\s*</.test(text) || !parsePaths(text).length) { fig.hidden = true; return; }
+    drawPicturePlot(canvas, text);
+  };
   if (pictureTextCache[src]) { draw(pictureTextCache[src]); return; }
+  fig.hidden = true;                                   // shown once the plot has loaded and checks out
   fetch(encodeURI(src))
     .then(r => { if (!r.ok) throw new Error(r.status); return r.text(); })
-    .then(text => { pictureTextCache[src] = text; draw(text); })
+    .then(text => { pictureTextCache[src] = text; if (request === pictureRequest) fig.hidden = false; draw(text); })
     .catch(() => { if (request === pictureRequest) fig.hidden = true; });
 }
 

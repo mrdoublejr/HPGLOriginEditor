@@ -308,6 +308,9 @@ input[type="range"] {
     grid-template-rows: minmax(0, 1fr);
   }
   .panel { min-height: 0; overflow-y: auto; }
+  /* The left pane never scrolls: on a short window the original preview shrinks instead */
+  .container > .panel:first-child { overflow: hidden; }
+  .container > .panel:first-child #previewOriginal { min-height: 60px; }
   .preview-box,
   #previewCorrected {
     flex: 1 1 0;
