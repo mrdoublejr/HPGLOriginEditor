@@ -15,7 +15,7 @@ header p { color: #666; font-size: 0.85rem; margin-top: 4px; }
   max-width: none;
   margin: 0 auto;
   display: grid;
-  grid-template-columns: 1fr 1.5fr;
+  grid-template-columns: minmax(300px, 1fr) 2.2fr;   /* left pane narrower, so the corrected preview gets the room */
   gap: 14px;
 }
 

@@ -531,15 +531,16 @@ function refreshStatus() {
   if (mc) {
     const f = (v) => v.toLocaleString();
     const was = optimizeOn && lastOptimize && lastOptimize.ok ? moveCounts(optCache.key) : null;
-    msg += ` · ${f(mc.moves)} pen-down moves` + (was ? ` (was ${f(was.moves)})` : "") +
-           ` · ${f(mc.drops)} pen drops` + (was ? ` (was ${f(was.drops)})` : "");
-    const left = optimizeOn ? (window.__repeatCount || 0) : 0;
-    if (left) msg += ` · ${f(left)} still over ink (orange)`;
+    // Only the moves go on the line (room is short); the rest is in the hover text.
+    msg += ` · ${f(mc.moves)} pen-down moves` + (was ? ` (was ${f(was.moves)})` : "");
+    const left = was ? (window.__repeatCount || 0) : 0;   // only when Optimize actually ran
     statusEl.title = (statusEl.title ? statusEl.title + "\n\n" : "") +
       "Pen-down moves: every drawing step the plotter makes with the pen down.\n" +
-      "Pen drops: how many times the pen is put down on the paper (and lifted again).\n" +
-      (left ? "Still over ink: lines Optimize kept on purpose, either under 1 mm of overlap " +
-              "(quicker to draw again than to lift the pen) or where another pen drew over them in between." : "");
+      `Pen drops: ${f(mc.drops)}` + (was ? ` (was ${f(was.drops)})` : "") +
+      ": how many times the pen is put down on the paper (and lifted again)." +
+      (left ? `\nStill over ink: ${f(left)} (orange on the preview). Optimize keeps these on purpose: ` +
+              "under 1 mm of overlap (quicker to draw again than to lift the pen), " +
+              "or another pen drew over them in between." : "");
   }
 
   if (lastScalingUnresolved) {
