@@ -524,6 +524,24 @@ function refreshStatus() {
     msg += ` · ${lastPensMerged} pen change${lastPensMerged !== 1 ? "s" : ""} set to pen 1 (one-pen plotter)`;
   }
 
+  // How much work the plotter has: pen-down moves and pen drops, and with Optimize on,
+  // what they were before it. Size and drag don't change these, so they're counted on
+  // the drawing before them (and kept, so dragging doesn't count again).
+  const mc = moveCounts(correctedBaseText);
+  if (mc) {
+    const f = (v) => v.toLocaleString();
+    const was = optimizeOn && lastOptimize && lastOptimize.ok ? moveCounts(optCache.key) : null;
+    msg += ` · ${f(mc.moves)} pen-down moves` + (was ? ` (was ${f(was.moves)})` : "") +
+           ` · ${f(mc.drops)} pen drops` + (was ? ` (was ${f(was.drops)})` : "");
+    const left = optimizeOn ? (window.__repeatCount || 0) : 0;
+    if (left) msg += ` · ${f(left)} still over ink (orange)`;
+    statusEl.title = (statusEl.title ? statusEl.title + "\n\n" : "") +
+      "Pen-down moves: every drawing step the plotter makes with the pen down.\n" +
+      "Pen drops: how many times the pen is put down on the paper (and lifted again).\n" +
+      (left ? "Still over ink: lines Optimize kept on purpose, either under 1 mm of overlap " +
+              "(quicker to draw again than to lift the pen) or where another pen drew over them in between." : "");
+  }
+
   if (lastScalingUnresolved) {
     alerts.push("The file uses SC scaling without IP, so the plotter's own P1/P2 decide its size: check the position before plotting");
   }
@@ -545,6 +563,31 @@ function refreshStatus() {
   }
   statusEl.textContent = msg;
   showAlerts(alerts);
+}
+
+// Counts the plotter's work in a drawing: pen-down moves (each coordinate pair drawn
+// with the pen down, and each arc or circle) and pen drops (each time the pen goes
+// down after being up). The last few results are kept, keyed by the text.
+const moveCountCache = new Map();
+function moveCounts(text) {
+  if (!text) return null;
+  if (moveCountCache.has(text)) return moveCountCache.get(text);
+  let down = false, moves = 0, drops = 0;
+  for (const { op, args } of hpglCommands(text)) {
+    if (op === "IN" || op === "DF") { down = false; continue; }
+    if (op === "PU") { down = false; }
+    else if (op === "PD") { if (!down) drops++; down = true; }
+    if (op === "PU" || op === "PD" || op === "PA" || op === "PR") {
+      if (down) moves += Math.floor((args.match(/[-+]?(?:\d+\.?\d*|\.\d+)/g) || []).length / 2);
+    } else if (op === "CI" || op === "AA" || op === "AR") {
+      if (op === "CI" || down) moves++;            // CI always draws; arcs only with the pen down
+      if (op === "CI") drops++;
+    }
+  }
+  const r = { moves, drops };
+  if (moveCountCache.size > 6) moveCountCache.delete(moveCountCache.keys().next().value);
+  moveCountCache.set(text, r);
+  return r;
 }
 
 // The notes box above the corrected preview. It flashes a few times whenever a note
