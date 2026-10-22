@@ -10,6 +10,9 @@ let btnRepeats = null, btnOptimize = null, btnSmooth = null, optStatsEl = null;
 let showRepeats = true;        // orange/red marks on repeated lines (corrected preview)
 let optimizeOn = false;        // Optimize: run optimizeHPGL on the corrected drawing
 let smoothOn = false;          // Smooth curves: runs of short moves -> arcs and circles (HP-GL plotters only)
+let penSpeed = "file";         // Speed: "file" (the file's own VS), "default" (VS;), or cm/s as a string
+let speedSelEl = null, speedGroupEl = null;
+try { penSpeed = localStorage.getItem("spt-pen-speed") || "file"; } catch (e) { /* private window */ }
 let lastOptimize = null;       // result of the last Optimize / Smooth curves run, for the note
 let optBase = null;            // the drawing as it was before Optimize / Smooth curves
 const optResults = new Map();  // recent optimizeHPGL results, so redrawing doesn't run it again
@@ -81,6 +84,13 @@ function boot() {
     btnRepeats       = document.getElementById("btnRepeats");
     btnOptimize      = document.getElementById("btnOptimize");
     btnSmooth        = document.getElementById("btnSmooth");
+    speedSelEl       = document.getElementById("penSpeed");
+    speedGroupEl     = document.getElementById("speedGroup");
+    speedSelEl.addEventListener("change", () => {
+      penSpeed = speedSelEl.value;
+      try { localStorage.setItem("spt-pen-speed", penSpeed); } catch (e) { /* not kept: fine */ }
+      runCorrection();
+    });
     optStatsEl       = document.getElementById("optStats");
     penChipsEl       = document.getElementById("penChips");
     penGroupEl       = document.getElementById("penGroup");
@@ -370,6 +380,8 @@ function runCorrection() {
       lastOptimize = runOptimizer(correctedBaseText, optimizeOn, smoothNow);
       correctedBaseText = lastOptimize.text;
     }
+    renderSpeedPicker();
+    correctedBaseText = applySpeed(correctedBaseText);
     correctedText = applyManualOffset(correctedBaseText);
 
     renderPreview(correctedText, plotterKey, modeKey, mediaKey,
@@ -617,6 +629,59 @@ function moveCounts(text) {
   return r;
 }
 
+// ── Pen speed ─────────────────────────────────────────────────────
+// For plotters whose VS range is known (plotters.json "penSpeed", from the plotter's own
+// manual). "file" leaves the file's VS commands alone; otherwise they are all taken out
+// and one VS is set at the start and again after every IN (which may reset it):
+// "default" -> "VS;" (each pen type's default speed), or a speed in cm/s -> "VS20;".
+function speedInfo() {
+  const p = PLOTTERS[plotterSelect.value];
+  return p && p.penSpeed && !OUTPUT_FORMATS[getMode().output] ? p.penSpeed : null;
+}
+
+// The speeds the file itself sets: "5 cm/s", "5–10 cm/s", or "" when it sets none.
+function fileSpeeds(text) {
+  const v = new Set();
+  for (const { op, args } of hpglCommands(text || "")) {
+    if (op === "VS") { const n = parseFloat(args); if (n > 0) v.add(n); }
+  }
+  if (!v.size) return "";
+  const a = [...v].sort((x, y) => x - y);
+  return (a.length === 1 ? a[0] : a[0] + "–" + a[a.length - 1]) + " cm/s";
+}
+
+function renderSpeedPicker() {
+  if (!speedSelEl) return;
+  const info = speedInfo();
+  speedGroupEl.hidden = !info;
+  if (!info) return;
+  const own = fileSpeeds(optBase || correctedBaseText);
+  const opts = [["file", own ? `file's own (${own})` : "file's own (none set: pen default)"],
+                ["default", "pen default"]];
+  speedSelEl.title = `Pen default: ${info.defaults} cm/s, by pen type. Fixed speeds apply to every pen ` +
+                     `(up to ${info.max} cm/s). Pen-up moves are always at the plotter's own speed.`;
+  for (const v of [5, 10, 15, 20, 30, 40, 50, 60]) if (v <= info.max) opts.push([String(v), v + " cm/s"]);
+  const html = opts.map(([v, t]) => `<option value="${v}">${t}</option>`).join("");
+  if (speedSelEl.innerHTML !== html) speedSelEl.innerHTML = html;
+  if (!opts.some(([v]) => v === penSpeed)) penSpeed = "file";
+  speedSelEl.value = penSpeed;
+}
+
+function applySpeed(text) {
+  if (!text || penSpeed === "file" || !speedInfo()) return text;
+  const vs = penSpeed === "default" ? "VS;" : "VS" + Math.min(+penSpeed, speedInfo().max) + ";";
+  const [pre, body] = splitPreamble(text);
+  // take the file's own VS out (labels are left alone)
+  let out = body.replace(HPGL_CMD, (m, label, op) => (!label && op && op.toUpperCase() === "VS" ? "" : m))
+                .replace(/(LB[^\x03]*\x03?)|;\s*;/g, (m, label) => label || ";");
+  // set ours after every IN, or at the very start if there is none
+  let added = false;
+  out = out.replace(/(LB[^\x03]*\x03?)|(^|;|\s)(IN\s*;)/gi,
+                    (m, label, a, b) => { if (label) return label; added = true; return a + b + vs; });
+  if (!added) out = vs + out;
+  return pre + out;
+}
+
 // The notes box above the corrected preview. It flashes a few times whenever a note
 // appears that wasn't there before, then stays lit (amber) as long as the note applies.
 function showAlerts(list) {
@@ -671,6 +736,7 @@ function updatePlotterInfo() {
   // turned on at the control panel; then they stop for a manual pen swap.
   if (mode.penPause) plotterInfo.textContent += " · colour changes need Pen Pause on";
   btnDownload.textContent = fmt ? `Download ${fmt.name}` : "Download HPGL";
+  renderSpeedPicker();
   if (btnSmooth) {
     btnSmooth.disabled = !!fmt;
     btnSmooth.setAttribute("aria-pressed", smoothOn && !fmt ? "true" : "false");  // shown off where it can't apply

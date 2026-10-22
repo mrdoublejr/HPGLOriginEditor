@@ -2,6 +2,8 @@
   "hp7585b": {
     "name": "HP 7585B",
     "xAlongFeed": true,
+    "penSpeed": { "max": 60, "defaults": "fibre-tip 50, roller-ball 60, drafting pens 15",
+                  "source": "HP 7580B/7585B/7586B Interfacing and Programming Manual 07580-90034, VS instruction" },
     "picture": "images/plotters/large-pen-plotter.hpgl",
     "pictureCaption": "Illustration: large moving-paper pen plotter on a stand",
     "unitsPerMM": 40,
