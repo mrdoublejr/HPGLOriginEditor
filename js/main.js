@@ -1059,8 +1059,22 @@ function buildOutput() {
   if (fmt) {
     content = fmt.convert(content).text;
     fileName = base + penTag + "_CORRECTED_" + mode + fmt.ext;
+  } else {
+    content = finishHPGL(content);
   }
   return { content, fileName };
+}
+
+// Ends an HP-GL file cleanly: the last command gets its ";" (without one the plotter
+// waits for more numbers and never draws the last move), then the pen is lifted and
+// put back in its stall (PU;SP0;). Without this the plot ended with the pen still
+// down on the paper: the correction takes a file's closing SP0 off, and many files
+// end in the middle of a line anyway. Any PU; / SPn; already at the end is replaced.
+function finishHPGL(text) {
+  let t = String(text || "").replace(/\s+$/, "");
+  t = t.replace(/(\s*;?\s*(PU|SP\s*\d*)\s*;?)+$/i, "");      // closing PU; / SPn; (nothing is drawn after them)
+  if (t && !/;$/.test(t)) t += ";";
+  return t + "PU;SP0;\n";
 }
 
 function onDownload() {
