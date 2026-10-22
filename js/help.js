@@ -55,6 +55,8 @@
       "Marks in orange and red any lines the file draws more than once, including a line that runs partly along one already drawn. The redder, the more times. It's just a marker on screen: it doesn't change your file."],
     ["#btnOptimize, #optStats", "Optimize",
       "Tidies the drawing so the plotter doesn't draw the same line twice (or go back over part of one) or wander around the paper. The picture stays exactly the same; it just plots quicker. The note beside it says what was saved."],
+    ["#btnSmooth", "Smooth curves",
+      "Many files draw every curve as dozens of tiny straight moves. This draws them as real curves the plotter knows (arcs and circles) instead: far fewer moves, and every point stays within 0.1 mm. Only for plotters that take HP-GL."],
     ["#btnAllPen1", "All black",
       "Draws every colour in black: handy when only a black pen (or black ink) is loaded. Click again to bring the colours back."],
     ["#penTarget, .pen-target", "Switched-off pens",

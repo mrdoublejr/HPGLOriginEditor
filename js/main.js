@@ -6,11 +6,28 @@ const ZOOM_LIMIT = 50;
 
 // Flip state (mirror the corrected drawing). Reset every time a file is loaded.
 let btnFlipH = null, btnFlipV = null;
-let btnRepeats = null, btnOptimize = null, optStatsEl = null;
+let btnRepeats = null, btnOptimize = null, btnSmooth = null, optStatsEl = null;
 let showRepeats = true;        // orange/red marks on repeated lines (corrected preview)
-let optimizeOn = false;        // run optimizeHPGL on the corrected drawing
-let lastOptimize = null;       // result of the last optimize run, for the note
-let optCache = { key: null, result: null };
+let optimizeOn = false;        // Optimize: run optimizeHPGL on the corrected drawing
+let smoothOn = false;          // Smooth curves: runs of short moves -> arcs and circles (HP-GL plotters only)
+let lastOptimize = null;       // result of the last Optimize / Smooth curves run, for the note
+let optBase = null;            // the drawing as it was before Optimize / Smooth curves
+const optResults = new Map();  // recent optimizeHPGL results, so redrawing doesn't run it again
+
+// optimizeHPGL with the cache. Same drawing and same buttons -> same result.
+function runOptimizer(text, optimize, smooth) {
+  const key = (optimize ? "o" : "-") + (smooth ? "s" : "-") + text;
+  if (!optResults.has(key)) {
+    if (optResults.size > 4) optResults.delete(optResults.keys().next().value);
+    optResults.set(key, optimizeHPGL(text, { optimize, smooth }));
+  }
+  return optResults.get(key);
+}
+
+// Smooth curves writes arcs (AA) and circles (CI): only for plotters that take HP-GL.
+function smoothAllowed() {
+  return !OUTPUT_FORMATS[getMode().output];
+}
 let skipPens = new Set();      // pens unticked with the pen chips
 let penTarget = "1";           // where switched-off pens draw: a pen number, or "off" for not at all
 let usedPens = [];             // pens the loaded drawing actually uses
@@ -63,6 +80,7 @@ function boot() {
     btnFlipH         = document.getElementById("btnFlipH");
     btnRepeats       = document.getElementById("btnRepeats");
     btnOptimize      = document.getElementById("btnOptimize");
+    btnSmooth        = document.getElementById("btnSmooth");
     optStatsEl       = document.getElementById("optStats");
     penChipsEl       = document.getElementById("penChips");
     penGroupEl       = document.getElementById("penGroup");
@@ -219,6 +237,12 @@ function wireEvents() {
     btnOptimize.setAttribute("aria-pressed", optimizeOn ? "true" : "false");
     runCorrection();
   });
+  btnSmooth.addEventListener("click", () => {
+    if (!smoothAllowed()) return;
+    smoothOn = !smoothOn;
+    btnSmooth.setAttribute("aria-pressed", smoothOn ? "true" : "false");
+    runCorrection();
+  });
   btnFlipH.addEventListener("click", () => {
     flipH = !flipH;
     updateFlipButtons();
@@ -282,6 +306,8 @@ function loadFile(file) {
     // (otherwise they'd be removed before you ever saw them).
     optimizeOn = false;
     btnOptimize.setAttribute("aria-pressed", "false");
+    smoothOn = false;                            // and Smooth curves, so the file is first seen as it is
+    btnSmooth.setAttribute("aria-pressed", "false");
 
     renderOriginalPreview();
     runCorrection();
@@ -338,11 +364,10 @@ function runCorrection() {
     // Optimize after flipping; offset, size and clamping are applied later, at output.
     // The result is kept so redrawing the same drawing doesn't run it again.
     lastOptimize = null;
-    if (optimizeOn && typeof optimizeHPGL === "function") {
-      if (optCache.key !== correctedBaseText) {
-        optCache = { key: correctedBaseText, result: optimizeHPGL(correctedBaseText) };
-      }
-      lastOptimize = optCache.result;
+    optBase = correctedBaseText;
+    const smoothNow = smoothOn && smoothAllowed();
+    if ((optimizeOn || smoothNow) && typeof optimizeHPGL === "function") {
+      lastOptimize = runOptimizer(correctedBaseText, optimizeOn, smoothNow);
       correctedBaseText = lastOptimize.text;
     }
     correctedText = applyManualOffset(correctedBaseText);
@@ -531,7 +556,7 @@ function refreshStatus() {
   const mc = moveCounts(correctedBaseText);
   if (mc) {
     const f = (v) => v.toLocaleString();
-    const was = optimizeOn && lastOptimize && lastOptimize.ok ? moveCounts(optCache.key) : null;
+    const was = lastOptimize && lastOptimize.ok ? moveCounts(optBase) : null;
     // Only the moves go on the line (room is short); the rest is in the hover text.
     msg += ` · ${f(mc.moves)} pen-down moves` + (was ? ` (was ${f(was.moves)})` : "");
     const left = was ? (window.__repeatCount || 0) : 0;   // only when Optimize actually ran
@@ -646,6 +671,14 @@ function updatePlotterInfo() {
   // turned on at the control panel; then they stop for a manual pen swap.
   if (mode.penPause) plotterInfo.textContent += " · colour changes need Pen Pause on";
   btnDownload.textContent = fmt ? `Download ${fmt.name}` : "Download HPGL";
+  if (btnSmooth) {
+    btnSmooth.disabled = !!fmt;
+    btnSmooth.setAttribute("aria-pressed", smoothOn && !fmt ? "true" : "false");  // shown off where it can't apply
+    btnSmooth.title = fmt
+      ? `Smooth curves writes HP-GL arcs and circles, so it's only for plotters that take HP-GL (this one gets ${fmt.name})`
+      : "Draw runs of short moves that follow a curve as arcs (AA) and circles (CI): far fewer moves, " +
+        "every point within 0.1 mm of where it was. Changes the drawing very slightly.";
+  }
   showPlotterPicture(p);
 }
 
@@ -915,11 +948,8 @@ function renderPenChips() {
 // Runs the optimizer itself (once; the result is kept for when Optimize is switched on),
 // so the numbers are exactly what Optimize would do. Used by the Plot button (plot.js).
 function pendingOptimize() {
-  if (optimizeOn || !correctedBaseText || typeof optimizeHPGL !== "function") return null;
-  if (optCache.key !== correctedBaseText) {
-    optCache = { key: correctedBaseText, result: optimizeHPGL(correctedBaseText) };
-  }
-  const r = optCache.result;
+  if (optimizeOn || !optBase || typeof optimizeHPGL !== "function") return null;
+  const r = runOptimizer(optBase, true, smoothOn && smoothAllowed());
   if (!r.ok) return null;
   const lines = r.stats.dupLines + r.stats.overlaps;
   return lines ? { lines, stats: r.stats } : null;
@@ -945,26 +975,34 @@ function showOptimizeNote() {
     return;
   }
   if (!o.ok) {
-    optStatsEl.textContent = "not optimized: " + o.reason;
+    optStatsEl.textContent = (optimizeOn ? "not optimized: " : "not smoothed: ") + o.reason;
     optStatsEl.title = "The file is used exactly as it is.";
     optStatsEl.classList.add("warn");
     return;
   }
   const t = o.stats, f = (v) => v.toLocaleString();
-  const cut = t.dupLines + t.overlaps + t.dots + t.nodes;
+  const fewer = t.before - t.after;
   const travel = t.travelBefore ? Math.round(100 * (1 - t.travelAfter / t.travelBefore)) : 0;
-  optStatsEl.textContent = cut || travel > 0
-    ? `${f(cut)} moves removed · pen-up travel ${travel >= 0 ? "−" : "+"}${Math.abs(travel)}%`
-    : "nothing to remove";
+  const curves = t.arcs + t.circles;
+  const parts = [];
+  if (fewer > 0) parts.push(`${f(fewer)} fewer moves`);
+  if (optimizeOn && travel) parts.push(`pen-up travel ${travel > 0 ? "−" : "+"}${Math.abs(travel)}%`);
+  if (smoothOn && smoothAllowed()) parts.push(curves ? `${f(t.arcs)} arcs, ${f(t.circles)} circles` : "no curves to smooth");
+  optStatsEl.textContent = parts.length ? parts.join(" · ") : "nothing to remove";
   optStatsEl.title =
-    `${f(t.dupLines)} repeated lines, ${f(t.dots)} dots on ink, ${f(t.nodes)} extra nodes on straight lines\n` +
-    (t.overlaps ? `${f(t.overlaps)} lines trimmed where they ran over ink already drawn ` +
-                  `(${(t.overlapLen / IN_TO_PU).toFixed(1)} in of ink not drawn twice)\n` : "") +
-    (t.spDropped ? `${f(t.spDropped)} pen and line-type commands left out (they repeated the one already set)\n` : "") +
-    `pen-down lines ${f(t.before)} → ${f(t.after)}\n` +
+    (optimizeOn
+      ? `${f(t.dupLines)} repeated lines, ${f(t.dots)} dots on ink, ${f(t.nodes)} extra nodes on straight lines\n` +
+        (t.overlaps ? `${f(t.overlaps)} lines trimmed where they ran over ink already drawn ` +
+                      `(${(t.overlapLen / IN_TO_PU).toFixed(1)} in of ink not drawn twice)\n` : "") +
+        (t.spDropped ? `${f(t.spDropped)} pen and line-type commands left out (they repeated the one already set)\n` : "")
+      : "") +
+    (curves ? `${f(t.arcMoves)} short moves drawn as ${f(t.arcs)} arcs (AA) and ${f(t.circles)} circles (CI), ` +
+              `every point within 0.1 mm\n` : "") +
+    `pen-down moves ${f(t.before)} → ${f(t.after)}\n` +
     `pen lifts ${f(t.liftsBefore)} → ${f(t.liftsAfter)}\n` +
     `pen-up travel ${f(Math.round(t.travelBefore / 400))} → ${f(Math.round(t.travelAfter / 400))} in\n` +
-    `Checked: draws exactly the same lines as the original.`;
+    (curves ? `Checked: every arc, circle and label of the original still in place.`
+            : `Checked: draws exactly the same lines as the original.`);
 }
 
 function updateFlipButtons() {

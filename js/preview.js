@@ -48,8 +48,23 @@ function hpglCommands(text) {
   return out;
 }
 
+// Points along an arc around (cx, cy), starting at (sx, sy), turning sweep degrees
+// (+ = anticlockwise, as HP-GL's AA/AR). Steps of at most 2°, enough for the preview.
+// The last point is the arc's end, where the plotter leaves the pen.
+function arcPoints(cx, cy, sx, sy, sweep) {
+  const r = Math.hypot(sx - cx, sy - cy), a0 = Math.atan2(sy - cy, sx - cx);
+  const steps = Math.max(1, Math.ceil(Math.abs(sweep) / 2));
+  const pts = [[sx, sy]];
+  for (let i = 1; i <= steps; i++) {
+    const a = a0 + (sweep * Math.PI / 180) * i / steps;
+    pts.push([cx + r * Math.cos(a), cy + r * Math.sin(a)]);
+  }
+  return pts;
+}
+
 // Reads HPGL into paths that remember which pen drew them: [{pen, pts:[[x,y],...]}].
-// Understands IN, SP, PU, PD, PA, PR, and labels: LB text with SI/SR size, DI/DR
+// Understands IN, SP, PU, PD, PA, PR, arcs and circles (AA, AR, CI),
+// and labels: LB text with SI/SR size, DI/DR
 // direction, CP moves and DT terminator. The labels are returned on the array as
 // .labels: [{pen, x, y, w, h, ux, uy, text}] (x, y = start of the baseline, w/h =
 // character width/height in plotter units, ux/uy = text direction). Used only for
@@ -102,6 +117,30 @@ function parsePenPaths(text) {
       }
       flush();
       x = lx; y = ly; cur = null;
+      continue;
+    }
+    // Arcs (AA centre absolute, AR centre relative; sweep in degrees, + = anticlockwise)
+    // draw from where the pen is, if it's down, and leave it at the arc's end.
+    // A circle (CI radius) is drawn around where the pen is, which stays put.
+    if (op === "AA" || op === "AR") {
+      const v = num(args);
+      if (v.length >= 3) {
+        const cx = op === "AR" ? x + v[0] : v[0], cy = op === "AR" ? y + v[1] : v[1];
+        const pts = arcPoints(cx, cy, x, y, v[2]);
+        if (down && pen > 0) {
+          if (!cur) { cur = { pen, pts: [[x, y]] }; out.push(cur); }
+          for (let k = 1; k < pts.length; k++) cur.pts.push(pts[k]);
+        }
+        [x, y] = pts[pts.length - 1];
+      }
+      continue;
+    }
+    if (op === "CI") {
+      const v = num(args);
+      if (v.length >= 1 && v[0] && pen > 0) {
+        out.push({ pen, pts: arcPoints(x, y, x + Math.abs(v[0]), y, 360) });
+        cur = null;
+      }
       continue;
     }
     if (op === "PA" || op === "PR" || op === "PU" || op === "PD") {

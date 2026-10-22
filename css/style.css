@@ -449,6 +449,9 @@ html[data-theme="dark"] .plot-dialog { background: #1e2128; color: #e3e5ea; bord
 html[data-theme="dark"] .plot-dialog .pd-more { color: #a3a8b3; }
 
 .plot-status { font-size: 0.8rem; color: #555; }
+/* Smooth curves can't be used on plotters that don't take HP-GL (js/main.js) */
+#btnSmooth:disabled { opacity: 0.45; cursor: default; }
+
 /* Stop button next to the plot status while a job runs (js/plot.js) */
 .plot-stop { font-size: 0.8rem; padding: 3px 9px; color: #c0392b; border-color: #e3b4ae; }
 .plot-stop:hover:not(:disabled) { background: #c0392b; color: #fff; border-color: #c0392b; }
