@@ -13,8 +13,10 @@
 //   - the order of the pieces (within one pen)            -> nearest next piece
 //
 // "Smooth curves": a run of short moves that follows a circle (within OPT_ARC_TOL)
-// becomes one arc (AA), and a closed ring of them one circle (CI). Files exported
-// from drawing programs often draw every curve as dozens of tiny straight moves.
+// becomes one arc (AA), and a closed ring of them one circle (CI). A run that follows
+// a straight line (a "staircase" of 1-unit steps, within the same tolerance) becomes
+// one straight move. Files exported from drawing programs often draw every curve as
+// dozens of tiny straight moves, and every slanted line as a staircase.
 //
 // Lines (PU, PD, PA, PR) are read into absolute, whole plotter units (relative
 // moves added up, decimals rounded). Every other command stays where it was and
@@ -36,14 +38,15 @@
 // is quicker than the extra pen lift trimming it would cost.
 const OPT_MIN_TRIM = 40;
 
-// Smooth curves: every point of the original must lie within OPT_ARC_TOL of the arc
-// (plotter units, 4 = 0.1 mm), and the arc may bulge at most OPT_ARC_BULGE away from
+// Smooth curves: every point of the original must lie within OPT_ARC_TOL of the arc or
+// straight line that replaces it (plotter units, 4 = 0.1 mm), and the arc may bulge at most OPT_ARC_BULGE away from
 // each original straight piece (12 = 0.3 mm), so a real polygon (an octagon, a
 // hexagon nut) stays a polygon. An arc needs at least OPT_ARC_MIN moves.
 const OPT_ARC_TOL = 4;
 const OPT_ARC_BULGE = 12;
 const OPT_ARC_MIN = 3;
 const OPT_ARC_STEP = 30;                       // largest turn (degrees) between two points of one arc
+const OPT_LINE_MAX = 400;                      // most moves looked at for one straightened line
 
 // Commands that only change settings: kept in place, nothing to do with where the pen is.
 const OPT_SETTINGS = new Set(["IN", "DF", "SP", "LT", "VS", "PW", "WU", "PG", "NP", "PS", "RO",
@@ -206,6 +209,7 @@ function optimizeHPGL(text, opts) {
     if (!b.ok) return a;
     const s = Object.assign({}, a.stats);
     s.after = b.stats.after; s.arcs = b.stats.arcs; s.circles = b.stats.circles; s.arcMoves = b.stats.arcMoves;
+    s.straight = b.stats.straight; s.straightMoves = b.stats.straightMoves;
     s.liftsAfter = b.stats.liftsAfter; s.travelAfter = b.stats.travelAfter;
     return { text: b.text, ok: true, stats: s };
   }
@@ -224,7 +228,7 @@ function optimizeHPGL(text, opts) {
   const blocks = [];                             // { items: [[ax,ay,bx,by]...], style } | { cmd }
   let cur = null;
   const stats = { dupLines: 0, overlaps: 0, overlapLen: 0, dots: 0, nodes: 0, before: 0, after: 0,
-                  spDropped: 0, arcs: 0, circles: 0, arcMoves: 0 };
+                  spDropped: 0, arcs: 0, circles: 0, arcMoves: 0, straight: 0, straightMoves: 0 };
   for (const it of read.items) {
     if (it.seg) {
       if (!cur || cur.style !== it.style) { cur = { items: [], style: it.style }; blocks.push(cur); }
@@ -399,7 +403,7 @@ function optimizeHPGL(text, opts) {
     else if (!(smooth && /^(AA|CI)/.test(s))) return { text: original, ok: false, reason: "check failed" };
   }                                                // (arcs and circles made by smoothing are extra)
   if (k !== a0.length) return { text: original, ok: false, reason: "check failed" };
-  if (!smooth || !(stats.arcs + stats.circles)) {
+  if (!smooth || !(stats.arcs + stats.circles + stats.straight)) {
     const ia = optInk(read), ib = optInk(t1);
     if (ia.size !== ib.size) return { text: original, ok: false, reason: "check failed" };
     for (const [st, ink] of ia) {
@@ -478,7 +482,7 @@ function optOrder(paths, px, py) {
 // path is one closed circle.
 function optFitArcs(p, stats) {
   const n = p.length / 2 - 1;                    // moves in the path
-  if (n < OPT_ARC_MIN) return null;
+  if (n < 2) return null;
   const P = (k) => [p[2 * k], p[2 * k + 1]];
   const closed = p[0] === p[p.length - 2] && p[1] === p[p.length - 1];
 
@@ -491,6 +495,12 @@ function optFitArcs(p, stats) {
   const pieces = [];
   let i = 0, any = false;
   while (i < n) {
+    // the longest straight move from here that every point in between stays close to
+    let line = i + 1;
+    for (let j = i + 2; j <= n && j - i <= OPT_LINE_MAX; j++) {
+      if (!optStraightRun(P, i, j)) break;
+      line = j;
+    }
     let best = null;
     if (i + OPT_ARC_MIN <= n) {
       let c = optCircleFit(P, i, i + OPT_ARC_MIN, false);
@@ -503,7 +513,12 @@ function optFitArcs(p, stats) {
         }
       }
     }
-    if (best) {
+    if (line > i + 1 && (!best || line > best.j)) {   // a tie goes to the arc: keeps small circles round
+      const [x, y] = P(line);                    // a staircase (or wobble) drawn as one line
+      pieces.push({ x, y });
+      stats.straight++; stats.straightMoves += line - i;
+      i = line; any = true;
+    } else if (best) {
       const [ex, ey] = P(best.j);
       pieces.push({ arc: true, cx: best.c.cx, cy: best.c.cy, sweep: best.c.sweep, x: ex, y: ey });
       stats.arcs++; stats.arcMoves += best.j - i;
@@ -515,6 +530,22 @@ function optFitArcs(p, stats) {
     }
   }
   return any ? pieces : null;
+}
+
+// Points i..j of a path can be drawn as one straight move from point i to point j:
+// every point in between lies within OPT_ARC_TOL of that line (measured to the line
+// itself, ends included, so a run that turns back on itself doesn't count).
+function optStraightRun(P, i, j) {
+  const [ax, ay] = P(i), [bx, by] = P(j);
+  const dx = bx - ax, dy = by - ay, L = dx * dx + dy * dy;
+  if (!L) return false;
+  for (let k = i + 1; k < j; k++) {
+    const [x, y] = P(k);
+    const t = ((x - ax) * dx + (y - ay) * dy) / L;
+    if (t < 0 || t > 1) return false;
+    if (Math.abs(dx * (ay - y) - (ax - x) * dy) / Math.sqrt(L) > OPT_ARC_TOL) return false;
+  }
+  return true;
 }
 
 // Fits one circle through the points i..j of a path and checks it is good enough

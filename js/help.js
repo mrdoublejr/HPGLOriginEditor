@@ -56,7 +56,7 @@
     ["#btnOptimize, #optStats", "Optimize",
       "Tidies the drawing so the plotter doesn't draw the same line twice (or go back over part of one) or wander around the paper. The picture stays exactly the same; it just plots quicker. The note beside it says what was saved."],
     ["#btnSmooth", "Smooth curves",
-      "Many files draw every curve as dozens of tiny straight moves. This draws them as real curves the plotter knows (arcs and circles) instead: far fewer moves, and every point stays within 0.1 mm. Only for plotters that take HP-GL."],
+      "Many files draw every curve as dozens of tiny straight moves, and every slanted line as a staircase of tiny steps. This draws the staircases as single straight lines and the curves as real curves the plotter knows (arcs and circles): far fewer moves, and every point stays within 0.1 mm. Only for plotters that take HP-GL."],
     ["#penSpeed, #speedGroup", "Speed",
       "How fast the pen moves while it draws. Some files set a slow speed of their own (Enterprise asks for 5 cm/s). Pick the pen's default speed or one of your own to plot faster; slower speeds give some pens a darker, cleaner line. Shown only for plotters whose speed range we know from their manual."],
     ["#btnAllPen1", "All black",

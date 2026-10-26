@@ -650,6 +650,9 @@ function fileSpeeds(text) {
   return (a.length === 1 ? a[0] : a[0] + "–" + a[a.length - 1]) + " cm/s";
 }
 
+// cm/s (as HP-GL's VS takes it) -> mm/s with two decimals, e.g. 50 -> "500.00"
+const mmps = (cmps) => (cmps * 10).toFixed(2);
+
 function renderSpeedPicker() {
   if (!speedSelEl) return;
   const info = speedInfo();
@@ -657,9 +660,10 @@ function renderSpeedPicker() {
   if (!info) return;
   const own = fileSpeeds(optBase || correctedBaseText);
   const opts = [["file", own ? `file's own (${own})` : "file's own (none set: pen default)"],
-                ["default", "pen default"]];
-  speedSelEl.title = `Pen default: ${info.defaults} cm/s, by pen type. Fixed speeds apply to every pen ` +
-                     `(up to ${info.max} cm/s). Pen-up moves are always at the plotter's own speed.`;
+                ["default", `pen default (${Object.values(info.defaults).map(mmps).join(" / ")} mm/s)`]];
+  speedSelEl.title = "Pen default, by the type of pen loaded: " +
+    Object.entries(info.defaults).map(([k, v]) => `${k} ${mmps(v)} mm/s`).join(", ") +
+    `. Fixed speeds apply to every pen (up to ${info.max} cm/s). Pen-up moves are always at the plotter's own speed.`;
   for (const v of [5, 10, 15, 20, 30, 40, 50, 60]) if (v <= info.max) opts.push([String(v), v + " cm/s"]);
   const html = opts.map(([v, t]) => `<option value="${v}">${t}</option>`).join("");
   if (speedSelEl.innerHTML !== html) speedSelEl.innerHTML = html;
@@ -742,8 +746,8 @@ function updatePlotterInfo() {
     btnSmooth.setAttribute("aria-pressed", smoothOn && !fmt ? "true" : "false");  // shown off where it can't apply
     btnSmooth.title = fmt
       ? `Smooth curves writes HP-GL arcs and circles, so it's only for plotters that take HP-GL (this one gets ${fmt.name})`
-      : "Draw runs of short moves that follow a curve as arcs (AA) and circles (CI): far fewer moves, " +
-        "every point within 0.1 mm of where it was. Changes the drawing very slightly.";
+      : "Draw staircase steps as straight lines, and runs of short moves that follow a curve as arcs (AA) " +
+        "and circles (CI): far fewer moves, every point within 0.1 mm of where it was. Changes the drawing very slightly.";
   }
   showPlotterPicture(p);
 }
@@ -1049,11 +1053,20 @@ function showOptimizeNote() {
   const t = o.stats, f = (v) => v.toLocaleString();
   const fewer = t.before - t.after;
   const travel = t.travelBefore ? Math.round(100 * (1 - t.travelAfter / t.travelBefore)) : 0;
-  const curves = t.arcs + t.circles;
+  const curves = t.arcs + t.circles + t.straight;
   const parts = [];
   if (fewer > 0) parts.push(`${f(fewer)} fewer moves`);
   if (optimizeOn && travel) parts.push(`pen-up travel ${travel > 0 ? "−" : "+"}${Math.abs(travel)}%`);
-  if (smoothOn && smoothAllowed()) parts.push(curves ? `${f(t.arcs)} arcs, ${f(t.circles)} circles` : "no curves to smooth");
+  if (smoothOn && smoothAllowed()) {
+    if (!curves) parts.push("nothing to smooth");
+    else {
+      const sm = [];
+      if (t.straight) sm.push(`${f(t.straight)} lines straightened`);
+      if (t.arcs) sm.push(`${f(t.arcs)} arcs`);
+      if (t.circles) sm.push(`${f(t.circles)} circles`);
+      parts.push(sm.join(", "));
+    }
+  }
   optStatsEl.textContent = parts.length ? parts.join(" · ") : "nothing to remove";
   optStatsEl.title =
     (optimizeOn
@@ -1062,8 +1075,9 @@ function showOptimizeNote() {
                       `(${(t.overlapLen / IN_TO_PU).toFixed(1)} in of ink not drawn twice)\n` : "") +
         (t.spDropped ? `${f(t.spDropped)} pen and line-type commands left out (they repeated the one already set)\n` : "")
       : "") +
-    (curves ? `${f(t.arcMoves)} short moves drawn as ${f(t.arcs)} arcs (AA) and ${f(t.circles)} circles (CI), ` +
-              `every point within 0.1 mm\n` : "") +
+    (t.straight ? `${f(t.straightMoves)} short moves (staircase steps) drawn as ${f(t.straight)} straight lines\n` : "") +
+    (t.arcs + t.circles ? `${f(t.arcMoves)} short moves drawn as ${f(t.arcs)} arcs (AA) and ${f(t.circles)} circles (CI)\n` : "") +
+    (curves ? "Every point within 0.1 mm of where it was.\n" : "") +
     `pen-down moves ${f(t.before)} → ${f(t.after)}\n` +
     `pen lifts ${f(t.liftsBefore)} → ${f(t.liftsAfter)}\n` +
     `pen-up travel ${f(Math.round(t.travelBefore / 400))} → ${f(Math.round(t.travelAfter / 400))} in\n` +
