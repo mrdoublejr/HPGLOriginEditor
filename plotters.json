@@ -102,6 +102,8 @@
       "36 in roll · 36 in long": { "across": 36, "along": 36 },
       "36 in roll · 48 in long": { "across": 48, "along": 36 },
       "36 in roll · 72 in long": { "across": 72, "along": 36 },
+      "7585B sheet · 36 × 48 in": { "across": 48, "along": 36, "sheetFor": "7585B" },
+      "7585B sheet · 36 × 48.5 in (max)": { "across": 48.5, "along": 36, "sheetFor": "7585B" },
       "24 in roll · 24 in long": { "across": 24, "along": 24 },
       "24 in roll · 36 in long": { "across": 36, "along": 24 },
       "24 in roll · 48 in long": { "across": 48, "along": 24 },

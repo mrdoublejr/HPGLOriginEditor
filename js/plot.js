@@ -15,6 +15,7 @@
   const LABELS   = { "750c": "750C", "7585b": "7585B" };
 
   const btn = document.getElementById("btnPlot");
+  const cutBtn = document.getElementById("btnCutSheet");
   const out = document.getElementById("plotStatus");
   const dl  = document.getElementById("btnDownload");
   const sel = document.getElementById("plotterSelect");
@@ -81,6 +82,11 @@
     btn.hidden = !(signedIn && target);
     btn.disabled = busy || dl.disabled;
     if (target) btn.textContent = "🖨 Plot on " + LABELS[target];
+    // Cut sheet: the 750C only, and it needs no file loaded
+    if (cutBtn) {
+      cutBtn.hidden = !(signedIn && target === "750c");
+      cutBtn.disabled = busy;
+    }
   }
 
   async function check() {
@@ -180,6 +186,45 @@
     });
   }
 
+  // Sends a job to the queue and watches it.
+  async function sendJob(target, name, text) {
+    busy = true; refresh(); say("Sending…");
+    try {
+      const r = await fetch("/admin/api/plot", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ plotter: target, name, text }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) { say("Couldn't queue it: " + (j.error || r.status), "err"); return; }
+      say("Queued…");
+      await poll(j.id);
+    } catch (e) {
+      say("Couldn't queue it: " + e.message, "err");
+    } finally {
+      busy = false; refresh();
+    }
+  }
+
+  // ✂ Cut sheet (750C): one blank sheet of the selected size, e.g. the largest the
+  // 7585B takes. A page with nothing on it may not be fed at all, so it gets four small
+  // corner marks at the edges of the plot area (3 mm, pointing inward); with the 750C's
+  // Page Format on "Inked area", the sheet comes out at the full size and is cut.
+  if (cutBtn) cutBtn.addEventListener("click", async () => {
+    if (PI_NAMES[sel.value] !== "750c" || typeof plotAreaPU !== "function") return;
+    const mediaName = mediaSelect.value;
+    if (!confirm("Cut one blank sheet (" + mediaName + ") on the 750C? It gets small corner marks only.")) return;
+    const a = plotAreaPU();
+    const t = 3 * 40;                                // 3 mm in plotter units
+    const R = Math.round;
+    const corner = (x, y, dx, dy) => `PU${R(x + dx * t)},${R(y)};PD${R(x)},${R(y)},${R(x)},${R(y + dy * t)};`;
+    const text = "IN;SP1;" +
+      corner(a.x1, a.y1, 1, 1) + corner(a.x2, a.y1, -1, 1) +
+      corner(a.x2, a.y2, -1, -1) + corner(a.x1, a.y2, 1, -1) +
+      "PU;SP0;\n";
+    const name = "sheet " + mediaName.replace(/[^\w.×-]+/g, " ").trim() + ".hpgl";
+    await sendJob("750c", name, text);
+  });
+
   btn.addEventListener("click", async () => {
     const target = PI_NAMES[sel.value];
     if (!target || typeof buildOutput !== "function") return;
@@ -205,21 +250,7 @@
         if (!o) return;
       }
     } else if (!confirm("Plot " + o.fileName + " on the " + LABELS[target] + "?")) return;
-    busy = true; refresh(); say("Sending…");
-    try {
-      const r = await fetch("/admin/api/plot", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ plotter: target, name: o.fileName, text: o.content }),
-      });
-      const j = await r.json().catch(() => ({}));
-      if (!r.ok) { say("Couldn't queue it: " + (j.error || r.status), "err"); return; }
-      say("Queued…");
-      await poll(j.id);
-    } catch (e) {
-      say("Couldn't queue it: " + e.message, "err");
-    } finally {
-      busy = false; refresh();
-    }
+    await sendJob(target, o.fileName, o.content);
   });
 
   sel.addEventListener("change", () => { say(""); refresh(); });
