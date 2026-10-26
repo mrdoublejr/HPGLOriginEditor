@@ -450,7 +450,7 @@ html[data-theme="dark"] .plot-dialog .pd-more { color: #a3a8b3; }
 
 .plot-status { font-size: 0.8rem; color: #555; }
 /* Pen speed picker in the Paths row (js/main.js) */
-.speed-pick { font-size: 0.85rem; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+.speed-pick { font-size: 0.85rem; color: #444; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
 .speed-pick[hidden] { display: none; }
 .speed-pick select { font: inherit; font-size: 0.85rem; padding: 2px 4px; max-width: 22rem; }
 
@@ -525,12 +525,14 @@ html[data-theme="dark"] .preview-box { background: #252932; border-color: #353a4
 html[data-theme="dark"] .preview-box canvas { border-color: #353a44 !important; }
 html[data-theme="dark"] .plotter-select,
 html[data-theme="dark"] .pen-target select,
+html[data-theme="dark"] .speed-pick select,
 html[data-theme="dark"] .contact-dialog input,
 html[data-theme="dark"] .contact-dialog select,
 html[data-theme="dark"] .contact-dialog textarea { background: #262a33; color: #e3e5ea; border-color: #3d424d; }
 html[data-theme="dark"] .plotter-select:disabled { background: #1f2229; color: #6f7581; }
 html[data-theme="dark"] .control-row { background: #22262e; border-color: #353a44; }
 html[data-theme="dark"] .control-label,
+html[data-theme="dark"] .speed-pick,
 html[data-theme="dark"] .zoom-pct,
 html[data-theme="dark"] .rotate-angle,
 html[data-theme="dark"] .offset-val { color: #c9cdd5; }

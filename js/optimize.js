@@ -47,6 +47,7 @@ const OPT_ARC_BULGE = 12;
 const OPT_ARC_MIN = 3;
 const OPT_ARC_STEP = 30;                       // largest turn (degrees) between two points of one arc
 const OPT_LINE_MAX = 400;                      // most moves looked at for one straightened line
+const OPT_LINE_TURN = 100;                     // most the path may turn in total (degrees) within one straightened line
 
 // Commands that only change settings: kept in place, nothing to do with where the pen is.
 const OPT_SETTINGS = new Set(["IN", "DF", "SP", "LT", "VS", "PW", "WU", "PG", "NP", "PS", "RO",
@@ -501,6 +502,12 @@ function optFitArcs(p, stats) {
       if (!optStraightRun(P, i, j)) break;
       line = j;
     }
+    // Never let a straightened line run back over the piece just drawn: a tiny closed
+    // shape (a box a few units across) would otherwise collapse into one line drawn
+    // there and back. Those points stay as they were.
+    if (line > i + 1 && pieces.length && optRetraces(pieces[pieces.length - 1], P(i - 1 >= 0 ? i - 1 : 0), P(i), P(line), i)) {
+      line = i + 1;
+    }
     let best = null;
     if (i + OPT_ARC_MIN <= n) {
       let c = optCircleFit(P, i, i + OPT_ARC_MIN, false);
@@ -515,7 +522,7 @@ function optFitArcs(p, stats) {
     }
     if (line > i + 1 && (!best || line > best.j)) {   // a tie goes to the arc: keeps small circles round
       const [x, y] = P(line);                    // a staircase (or wobble) drawn as one line
-      pieces.push({ x, y });
+      pieces.push({ x, y, from: P(i) });
       stats.straight++; stats.straightMoves += line - i;
       i = line; any = true;
     } else if (best) {
@@ -525,11 +532,24 @@ function optFitArcs(p, stats) {
       i = best.j; any = true;
     } else {
       const [x, y] = P(i + 1);
-      pieces.push({ x, y });
+      pieces.push({ x, y, from: P(i) });
       i++;
     }
   }
   return any ? pieces : null;
+}
+
+// Would a straight move from b to c go back over the line piece just drawn (ending
+// at b), in the opposite direction? prev is that piece; a is where it started when
+// it's a plain line (for arcs, the point before b).
+function optRetraces(prev, a, b, c, i) {
+  if (prev.arc) return false;
+  const start = prev.from || a;
+  const ux = b[0] - start[0], uy = b[1] - start[1], vx = c[0] - b[0], vy = c[1] - b[1];
+  if (ux * vx + uy * vy >= 0) return false;      // carries on forward or turns: fine
+  const L = Math.hypot(ux, uy);
+  if (!L) return false;
+  return Math.abs(ux * (start[1] - c[1]) - (start[0] - c[0]) * uy) / L <= OPT_ARC_TOL; // lies on it
 }
 
 // Points i..j of a path can be drawn as one straight move from point i to point j:
@@ -539,10 +559,20 @@ function optStraightRun(P, i, j) {
   const [ax, ay] = P(i), [bx, by] = P(j);
   const dx = bx - ax, dy = by - ay, L = dx * dx + dy * dy;
   if (!L) return false;
+  let lastT = 0, turned = 0;
   for (let k = i + 1; k < j; k++) {
     const [x, y] = P(k);
     const t = ((x - ax) * dx + (y - ay) * dy) / L;
     if (t < 0 || t > 1) return false;
+    if (t < lastT - OPT_ARC_TOL / Math.sqrt(L)) return false;   // keeps moving forward along the line
+    lastT = Math.max(lastT, t);
+    // A staircase zig-zags (turns left, then right); a U-turn (a thin rectangle drawn as
+    // a thick line) turns the same way twice. Only zig-zags are straightened.
+    const [px, py] = P(k - 1), [nx, ny] = P(k + 1);
+    let a1 = Math.atan2(ny - y, nx - x) - Math.atan2(y - py, x - px);
+    if (a1 > Math.PI) a1 -= 2 * Math.PI; else if (a1 <= -Math.PI) a1 += 2 * Math.PI;
+    turned += a1;
+    if (Math.abs(turned) > OPT_LINE_TURN * Math.PI / 180) return false;
     if (Math.abs(dx * (ay - y) - (ax - x) * dy) / Math.sqrt(L) > OPT_ARC_TOL) return false;
   }
   return true;
