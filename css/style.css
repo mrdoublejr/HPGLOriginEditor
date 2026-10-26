@@ -452,7 +452,7 @@ html[data-theme="dark"] .plot-dialog .pd-more { color: #a3a8b3; }
 /* Pen speed picker in the Paths row (js/main.js) */
 .speed-pick { font-size: 0.85rem; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
 .speed-pick[hidden] { display: none; }
-.speed-pick select { font: inherit; font-size: 0.85rem; padding: 2px 4px; max-width: 16rem; }
+.speed-pick select { font: inherit; font-size: 0.85rem; padding: 2px 4px; max-width: 22rem; }
 
 /* Smooth curves can't be used on plotters that don't take HP-GL (js/main.js) */
 #btnSmooth:disabled { opacity: 0.45; cursor: default; }

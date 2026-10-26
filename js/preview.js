@@ -128,9 +128,11 @@ function parsePenPaths(text) {
         const cx = op === "AR" ? x + v[0] : v[0], cy = op === "AR" ? y + v[1] : v[1];
         const pts = arcPoints(cx, cy, x, y, v[2]);
         if (down && pen > 0) {
-          if (!cur) { cur = { pen, pts: [[x, y]] }; out.push(cur); }
-          for (let k = 1; k < pts.length; k++) cur.pts.push(pts[k]);
+          // an arc is its own path, marked so the repeat check leaves it out (Optimize
+          // never changes arcs, so it couldn't take a repeat there out)
+          out.push({ pen, pts, arc: true });
         }
+        cur = null;
         [x, y] = pts[pts.length - 1];
       }
       continue;
@@ -138,7 +140,7 @@ function parsePenPaths(text) {
     if (op === "CI") {
       const v = num(args);
       if (v.length >= 1 && v[0] && pen > 0) {
-        out.push({ pen, pts: arcPoints(x, y, x + Math.abs(v[0]), y, 360) });
+        out.push({ pen, pts: arcPoints(x, y, x + Math.abs(v[0]), y, 360), arc: true });
         cur = null;
       }
       continue;
@@ -185,6 +187,7 @@ function findRepeats(text) {
   let penPaths = parsePenPaths(text);
   if (!penPaths.length) penPaths = parsePaths(text).map((pts) => ({ pen: 1, pts }));
   for (const path of penPaths) {
+    if (path.arc) continue;                       // arcs and circles: Optimize leaves them as they are
     const pts = path.pts;
     for (let i = 1; i < pts.length; i++) {
       const [ax, ay] = pts[i - 1], [bx, by] = pts[i];
