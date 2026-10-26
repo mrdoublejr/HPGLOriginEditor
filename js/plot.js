@@ -7,7 +7,8 @@
 // there and, if so, offers to optimize it before plotting.
 // While a job plots, it shows how far along it is (the Pi reports every few seconds,
 // see functions/pi/progress.js) and a Stop button. A job that is still running when
-// the page opens is picked up again.
+// the page opens is picked up again. On the 7585B the corrected preview also shows,
+// in red, what the pen has drawn so far (plottrace.js).
 
 (function () {
   // Site plotter -> the name the Pi knows it by.
@@ -103,8 +104,23 @@
     // (the Plot button stays usable: a new job just waits its turn behind this one)
     if (live && !watching) {
       say("Plot " + (live.name || "") + ": checking…");
-      await poll(live.id);
+      const watch = poll(live.id);          // (sets watching straight away)
+      traceFrom(live);
+      await watch;
     }
+  }
+
+  // The red trace for a job that was already running: fetch what was sent.
+  async function traceFrom(job) {
+    if (!window.plotTrace || job.plotter !== "7585b") return;
+    try {
+      const r = await fetch("/admin/api/plot?file=1&id=" + job.id, { cache: "no-store" });
+      if (!r.ok) return;
+      const b = new Uint8Array(await r.arrayBuffer());
+      let text = "";
+      for (let i = 0; i < b.length; i += 8192) text += String.fromCharCode.apply(null, b.subarray(i, i + 8192));
+      if (watching === job.id && !plotTrace.has(job.id)) plotTrace.start(job.id, job.plotter, job.name, text);
+    } catch (e) { /* no trace, the plot carries on */ }
   }
 
   let watchSeq = 0;                       // a newer job takes over the status line from an older one
@@ -124,6 +140,10 @@
           j = await r.json();
         } catch (e) { continue; }
         const job = j.job, piAway = secondsSince(j.piSeen) > 60;
+        if (window.plotTrace) {
+          if (["sending", "stopping"].includes(job.status)) plotTrace.update(job);
+          else if (job.status !== "queued") plotTrace.end(job.status);
+        }
         if (job.status === "queued") {
           say(piAway ? "Waiting: the Pi hasn't checked in for a while (is it on?)" : "Queued…", piAway ? "warn" : "");
         } else if (job.status === "sending") {
@@ -197,6 +217,7 @@
       const j = await r.json().catch(() => ({}));
       if (!r.ok) { say("Couldn't queue it: " + (j.error || r.status), "err"); return; }
       say("Queued…");
+      if (window.plotTrace) plotTrace.start(j.id, target, name, text);
       await poll(j.id);
     } catch (e) {
       say("Couldn't queue it: " + e.message, "err");

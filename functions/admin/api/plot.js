@@ -1,6 +1,8 @@
 // The Plot button's side of the plot queue (see ../../_plotjobs.js and /pi/).
 // GET  /admin/api/plot          : recent jobs, and when the Pi last checked in
 // GET  /admin/api/plot?id=N     : one job (the button polls this for its status)
+// GET  /admin/api/plot?id=N&file=1 : the bytes that were sent, while the job is still stored
+//                                  (the live plot trace picks a running job up again with it)
 // POST /admin/api/plot          : {plotter, name, text}  -> queues a job, returns {id}
 // POST /admin/api/plot          : {action: "cancel", id} -> cancels a job that hasn't started
 // POST /admin/api/plot          : {action: "stop", id}   -> a waiting job is cancelled; one being
@@ -19,6 +21,13 @@ export async function onRequestGet({ request, env }) {
   await ensurePlotTables(env.DB);
   const id = parseInt(new URL(request.url).searchParams.get("id") || "", 10);
   const piSeen = await piLastSeen(env.DB);
+  if (id && new URL(request.url).searchParams.get("file")) {
+    const obj = env.MY_BUCKET ? await env.MY_BUCKET.get(jobKey(id)) : null;
+    if (!obj) return json(404, { error: "the file isn't stored any more" });
+    return new Response(obj.body, {
+      headers: { "Content-Type": "application/octet-stream", "Cache-Control": "no-store" },
+    });
+  }
   if (id) {
     const job = await env.DB.prepare("SELECT * FROM plot_jobs WHERE id = ?").bind(id).first();
     if (!job) return json(404, { error: "no such job" });

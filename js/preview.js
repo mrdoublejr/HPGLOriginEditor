@@ -577,7 +577,12 @@ function renderPreview(text, plotterKey, modeKey, mediaKey, targetBox,
     ctx.restore();
   }
 
-  if (enableDrag) attachDragHandlers();
+  if (enableDrag) {
+    // For the live plot trace (plottrace.js): plotter units -> this canvas, in CSS pixels.
+    targetBox.__map = { canvas, width: canvasW, toScreen: (x, y) => toScreen(x, y, s) };
+    document.dispatchEvent(new CustomEvent("spt-corrected-drawn"));
+    attachDragHandlers();
+  }
 }
 
 // Draws the two dimension lines with arrowheads and labels around the page rectangle.

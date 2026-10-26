@@ -80,6 +80,7 @@ header p { color: #666; font-size: 0.85rem; margin-top: 4px; }
    window height), but allowed to grow into any spare room at the bottom of the
    right-hand panel. It never makes the page taller. */
 #previewCorrected {
+  position: relative;               /* the live plot trace sits on top of the drawing */
   height: 42vh;
   min-height: 240px;
   flex: 1 1 auto;
@@ -703,3 +704,13 @@ html[data-theme="dark"] .alerts.flash { animation-name: alert-flash-dark; }
 }
 html[data-theme="dark"] .opt-stats.nudge { color: #f0a84a; }
 @media (prefers-reduced-motion: reduce) { .opt-stats.nudge, .icon-btn.nudge { animation: none; } }
+
+/* Live plot trace (plottrace.js): red over the corrected preview while the 7585B plots */
+.preview-box canvas.plot-trace {
+  position: absolute;
+  pointer-events: none;
+  border: 0 !important;
+  background: transparent !important;
+  max-width: none;
+  max-height: none;
+}
