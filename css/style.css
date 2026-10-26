@@ -449,6 +449,20 @@ html[data-theme="dark"] .plot-dialog { background: #1e2128; color: #e3e5ea; bord
 html[data-theme="dark"] .plot-dialog .pd-more { color: #a3a8b3; }
 
 .plot-status { font-size: 0.8rem; color: #555; }
+/* Pen-down moves on the status line (js/main.js showMovesChip): highlighted, and it
+   flashes a few times when the number changes */
+.moves-chip {
+  display: inline-block; padding: 1px 8px; border-radius: 999px;
+  font-weight: 700; font-variant-numeric: tabular-nums;
+  background: #e3effc; color: #1f4e8a; border: 1px solid #b9d3f2;
+}
+.moves-chip.flash { animation: moves-flash 0.45s ease-in-out 4; }
+@keyframes moves-flash {
+  50% { background: #ffd54a; color: #3a2a00; border-color: #e0b400; box-shadow: 0 0 0 3px rgba(255, 196, 0, 0.45); }
+}
+html[data-theme="dark"] .moves-chip { background: #1f3550; color: #d6e6fb; border-color: #35567f; }
+@media (prefers-reduced-motion: reduce) { .moves-chip.flash { animation: none; } }
+
 /* Pen speed picker in the Paths row (js/main.js) */
 .speed-pick { font-size: 0.85rem; color: #444; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
 .speed-pick[hidden] { display: none; }

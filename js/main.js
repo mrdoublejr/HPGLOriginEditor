@@ -566,11 +566,13 @@ function refreshStatus() {
   // what they were before it. Size and drag don't change these, so they're counted on
   // the drawing before them (and kept, so dragging doesn't count again).
   const mc = moveCounts(correctedBaseText);
+  let movesText = "";
   if (mc) {
     const f = (v) => v.toLocaleString();
     const was = lastOptimize && lastOptimize.ok ? moveCounts(optBase) : null;
-    // Only the moves go on the line (room is short); the rest is in the hover text.
-    msg += ` · ${f(mc.moves)} pen-down moves` + (was ? ` (was ${f(was.moves)})` : "");
+    // Only the moves go on the line (room is short), in their own highlighted chip;
+    // the rest is in the hover text.
+    movesText = `${f(mc.moves)} pen-down moves` + (was ? ` (was ${f(was.moves)})` : "");
     const left = was ? (window.__repeatCount || 0) : 0;   // only when Optimize actually ran
     statusEl.title = (statusEl.title ? statusEl.title + "\n\n" : "") +
       "Pen-down moves: every drawing step the plotter makes with the pen down.\n" +
@@ -601,6 +603,7 @@ function refreshStatus() {
     }
   }
   statusEl.textContent = msg;
+  showMovesChip(movesText);
   showAlerts(alerts);
 }
 
@@ -684,6 +687,23 @@ function applySpeed(text) {
                     (m, label, a, b) => { if (label) return label; added = true; return a + b + vs; });
   if (!added) out = vs + out;
   return pre + out;
+}
+
+// The pen-down moves on the status line, as a highlighted chip. It flashes when the
+// number changes (new file, Optimize, Smooth curves, pens), not when dragging or zooming.
+let shownMoves = "";
+function showMovesChip(text) {
+  if (!text) { shownMoves = ""; return; }
+  statusEl.appendChild(document.createTextNode(" · "));
+  const chip = document.createElement("span");
+  chip.className = "moves-chip";
+  chip.textContent = text;
+  statusEl.appendChild(chip);
+  if (text !== shownMoves) {
+    void chip.offsetWidth;                       // start the animation fresh
+    chip.classList.add("flash");
+  }
+  shownMoves = text;
 }
 
 // The notes box above the corrected preview. It flashes a few times whenever a note
