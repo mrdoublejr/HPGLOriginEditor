@@ -1112,7 +1112,7 @@ function showOptimizeNote() {
     (skipped ? `${f(t.thinSegs)} moves left out that only went over ink the same pen already put down ` +
                `(${(t.thinLen / 400 / 2.54).toFixed(1)} in of pen travel; ${f(t.thinPieces)} whole pieces)\n` : "") +
     (curves ? "Every point within 0.1 mm of where it was.\n" : "") +
-    (skipped ? "Every point left out is within 0.1 mm of ink drawn.\n" : "") +
+    (skipped ? "Every point left out is within 0.1 mm of ink drawn (0.2 mm of a line running the same way).\n" : "") +
     `pen-down moves ${f(t.before)} → ${f(t.after)}\n` +
     `pen lifts ${f(t.liftsBefore)} → ${f(t.liftsAfter)}\n` +
     `pen-up travel ${f(Math.round(t.travelBefore / 400))} → ${f(Math.round(t.travelAfter / 400))} in\n` +

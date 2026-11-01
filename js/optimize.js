@@ -23,7 +23,8 @@
 // hundreds of short pieces with hair-width gaps, and the plotter sits there pounding.
 //
 // "Skip re-inking": leaves out moves that only go over ink the same pen has already put
-// down (every point of the move within OPT_THIN of it, 0.1 mm). Some files draw every
+// down (every point of the move within OPT_THIN of it, 0.1 mm; or 0.2 mm of ink running
+// the same way, or of any ink for a tick 0.15 mm or shorter). Some files draw every
 // line as an outline (two edges a hair apart, joined by zig-zags), so the pen goes over
 // the same narrow band again and again and soaks it solid. A covered stretch in the
 // middle of a piece is only left out when it's at least OPT_MIN_TRIM long (a shorter one
@@ -62,6 +63,9 @@ const OPT_LINE_MAX = 400;                      // most moves looked at for one s
 const OPT_LINE_TURN = 100;                     // most the path may turn in total (degrees) within one straightened line
 const OPT_GAP = 4;                             // Smooth curves: pen stays down across a gap up to this (4 = 0.1 mm)
 const OPT_THIN = 4;                            // Skip re-inking: how close to ink already down counts as on it (4 = 0.1 mm)
+const OPT_THIN_TWIN = 8;                       // ... or this close (0.2 mm) to ink running the same way (an outline's other edge)
+const OPT_THIN_TWIN_SIN = 0.21;                // "the same way": within about 12 degrees
+const OPT_THIN_TICK = 6;                       // ... or this close for a move this short (0.15 mm): the little ticks between edges
 const OPT_THIN_CELL = 16;                      // grid cell for finding ink nearby (plotter units)
 
 // Commands that only change settings: kept in place, nothing to do with where the pen is.
@@ -472,8 +476,8 @@ function optThinCellsOf(ax, ay, bx, by) {
   const len = Math.hypot(bx - ax, by - ay), n = Math.max(1, Math.ceil(len / (C / 2)));
   for (let k = 0; k <= n; k++) {
     const x = ax + (bx - ax) * k / n, y = ay + (by - ay) * k / n;
-    const i0 = Math.floor((x - OPT_THIN) / C), i1 = Math.floor((x + OPT_THIN) / C);
-    const j0 = Math.floor((y - OPT_THIN) / C), j1 = Math.floor((y + OPT_THIN) / C);
+    const i0 = Math.floor((x - OPT_THIN_TWIN) / C), i1 = Math.floor((x + OPT_THIN_TWIN) / C);
+    const j0 = Math.floor((y - OPT_THIN_TWIN) / C), j1 = Math.floor((y + OPT_THIN_TWIN) / C);
     for (let i = i0; i <= i1; i++) for (let j = j0; j <= j1; j++) keys.add((i + 100000) * 200003 + (j + 100000));
   }
   return keys;
@@ -491,11 +495,15 @@ function optThinAdd(ink, style, ax, ay, bx, by) {
   }
 }
 
-// Is every point of this move within OPT_THIN of ink this pen already put down (and
-// no other pen has drawn there since)?
+// Is every point of this move on ink this pen already put down (and no other pen has
+// drawn there since)? "On" means within OPT_THIN of it; or within OPT_THIN_TWIN of ink
+// running the same way (the other edge of a line drawn as an outline), or of any ink
+// for a move no longer than OPT_THIN_TICK (a tick between the two edges). Ink crossing
+// at an angle only counts within OPT_THIN, so a line it crosses isn't cut short.
 function optThinCovered(ink, style, ax, ay, bx, by) {
-  const C = OPT_THIN_CELL, D2 = OPT_THIN * OPT_THIN;
+  const C = OPT_THIN_CELL, D2 = OPT_THIN * OPT_THIN, T2 = OPT_THIN_TWIN * OPT_THIN_TWIN;
   const len = Math.hypot(bx - ax, by - ay), n = Math.max(1, Math.ceil(len / 2));
+  const tick = len <= OPT_THIN_TICK, ux = len ? (bx - ax) / len : 0, uy = len ? (by - ay) / len : 0;
   for (let k = 0; k <= n; k++) {
     const x = ax + (bx - ax) * k / n, y = ay + (by - ay) * k / n;
     const key = (Math.floor(x / C) + 100000) * 200003 + (Math.floor(y / C) + 100000);
@@ -509,8 +517,10 @@ function optThinCovered(ink, style, ax, ay, bx, by) {
       const dx = s.bx - s.ax, dy = s.by - s.ay, L = dx * dx + dy * dy;
       let t = L ? ((x - s.ax) * dx + (y - s.ay) * dy) / L : 0;
       t = t < 0 ? 0 : t > 1 ? 1 : t;
-      const ex = s.ax + t * dx - x, ey = s.ay + t * dy - y;
-      if (ex * ex + ey * ey <= D2) { ok = true; break; }
+      const ex = s.ax + t * dx - x, ey = s.ay + t * dy - y, e2 = ex * ex + ey * ey;
+      if (e2 <= D2) { ok = true; break; }
+      if (e2 > T2) continue;
+      if (tick || (L && Math.abs(ux * dy - uy * dx) / Math.sqrt(L) <= OPT_THIN_TWIN_SIN)) { ok = true; break; }
     }
     if (!ok) return false;
   }
