@@ -1,5 +1,5 @@
 // ── plottrace.js ──────────────────────────────────────────────────
-// While a plot runs on the 7585B, draws in red over the corrected preview what the pen
+// While a plot runs on the 7585B or 7475A, draws in red over the corrected preview what the pen
 // has drawn so far, with the last few lines brighter and a dot where the pen is now.
 //
 // How it knows: plot.js has the exact text that was sent. The Pi reports every few
@@ -9,14 +9,19 @@
 // on at the rate the bytes have been going. Approximate, but close: it's a few short
 // lines out at most on a busy drawing.
 //
-// The trace is drawn in the coordinates that were sent, so it shows where the pen
-// really is on the paper even if the drawing is dragged or resized afterwards.
-// Only the 7585B: the 750C takes the whole file over the network at once.
+// The trace follows the drawing on the screen: how the preview was set up when the job
+// was sent (Size, offset) is kept with it, so dragging or resizing the drawing later
+// moves the trace too. If the preview can't match the job any more (another file, turned
+// or flipped, another plotter), the trace is hidden.
+// Not the 750C: it takes the whole file over the network at once.
 
 (function () {
   const LAG = 1100;             // bytes between "sent down the cable" and the pen (1,024 buffer + a little)
   const HEAD = 500;             // bytes of the most recent drawing shown brighter
   const TICK = 250;             // ms between redraws
+  // Serial plotters that draw while the file trickles in. Both have a 1 KB buffer
+  // (7585B: HP manual 07580-90034; 7475A: softsolder.com, 2015, not yet checked in HP's manual).
+  const SERIAL = { "7585b": true, "7475a": true };
 
   let job = null;               // { id, name, segs, total }
   let est = 0;                  // estimated byte position of the pen
@@ -110,7 +115,8 @@
     const map = box && box.__map;
     if (!map || !map.canvas.isConnected) return null;
     const cv = map.canvas;
-    const k = cv.clientWidth / map.width;                  // the canvas may be shown smaller than drawn
+    // the canvas may be shown smaller than drawn (each way on its own)
+    const kx = cv.clientWidth / map.width, ky = cv.clientHeight / map.height;
     const bRect = box.getBoundingClientRect(), cRect = cv.getBoundingClientRect();
     const left = cRect.left - bRect.left - box.clientLeft + cv.clientLeft;
     const top  = cRect.top  - bRect.top  - box.clientTop  + cv.clientTop;
@@ -122,7 +128,7 @@
       o.style.width = cv.clientWidth + "px"; o.style.height = cv.clientHeight + "px";
       o.width = Math.round(cv.clientWidth * hiRes); o.height = Math.round(cv.clientHeight * hiRes);
       const ctx = o.getContext("2d");
-      ctx.setTransform(hiRes * k, 0, 0, hiRes * k, 0, 0);
+      ctx.setTransform(hiRes * kx, 0, 0, hiRes * ky, 0, 0);
       ctx.lineCap = "round"; ctx.lineJoin = "round";
       box.appendChild(o);
       return { o, ctx };
@@ -135,15 +141,24 @@
     layer = null;
   }
 
-  // Is the corrected preview showing the file this job came from?
-  function sameFile() {
-    if (typeof currentFile === "undefined" || !currentFile || !currentFile.name) return false;
-    const base = currentFile.name.replace(/\.[^.]+$/, "");
-    return !!base && job.name.startsWith(base);
+  // Point of the sent file -> point of the drawing as the preview shows it now, or null
+  // when the preview can't show this job (another file, turned, flipped, other plotter).
+  function mapper() {
+    const now = typeof plotViewState === "function" ? plotViewState() : null;
+    if (!now) return null;
+    const v = job.view;
+    if (!v) {                                             // sent before views were kept: same file name only
+      const base = now.file.replace(/\.[^.]+$/, "");
+      return base && job.name.startsWith(base) ? (x, y) => [x, y] : null;
+    }
+    if (v.file !== now.file || v.rot !== now.rot || v.fh !== now.fh || v.fv !== now.fv ||
+        v.plotter !== now.plotter || v.mode !== now.mode) return null;
+    return (x, y) => [((x - v.dx) / v.z - v.ox + now.ox) * now.z + now.dx,
+                      ((y - v.dy) / v.z - v.oy + now.oy) * now.z + now.dy];
   }
 
   function strokeRange(ctx, a, b) {
-    const s = job.segs, P = layer.map.toScreen;
+    const s = job.segs, P = layer.P;
     ctx.beginPath();
     for (let k = a; k < b; k++) {
       const [ax, ay] = P(s.x1[k], s.y1[k]), [bx, by] = P(s.x2[k], s.y2[k]);
@@ -154,8 +169,15 @@
 
   function draw() {
     if (!job) return;
-    if (!sameFile()) { dropLayer(); return; }
-    if (!layer || !layer.map.canvas.isConnected) { dropLayer(); layer = makeLayer(); if (!layer) return; }
+    if (!layer || !layer.map.canvas.isConnected) {
+      dropLayer();
+      const m = mapper();
+      if (!m) return;
+      layer = makeLayer();
+      if (!layer) return;
+      const S = layer.map.toScreen;
+      layer.P = (x, y) => { const [a, b] = m(x, y); return S(a, b); };
+    }
     const upTo = firstAfter(est);                         // segments [0, upTo) are drawn on the paper
     // what's done: added a piece at a time
     if (upTo > layer.drawn) {
@@ -172,7 +194,7 @@
     const from = firstAfter(est - HEAD);
     h.strokeStyle = "rgba(255, 0, 0, 0.35)"; h.lineWidth = 7; strokeRange(h, from, upTo);
     h.strokeStyle = "#ff1a1a"; h.lineWidth = 2.6; strokeRange(h, from, upTo);
-    const s = job.segs, [px, py] = layer.map.toScreen(s.x2[upTo - 1], s.y2[upTo - 1]);
+    const s = job.segs, [px, py] = layer.P(s.x2[upTo - 1], s.y2[upTo - 1]);
     const pulse = 4 + 2 * Math.sin(Date.now() / 160);
     h.fillStyle = "rgba(255, 0, 0, 0.25)";
     h.beginPath(); h.arc(px, py, pulse + 5, 0, 2 * Math.PI); h.fill();
@@ -193,11 +215,18 @@
   document.addEventListener("spt-corrected-drawn", () => { if (job) { dropLayer(); draw(); } });
 
   window.plotTrace = {
-    // A job starts: text is exactly what was sent. Only the 7585B is traced.
-    start(id, plotter, name, text) {
+    // How the preview is set up as a job is sent: kept (in this browser) with the job id,
+    // so the trace still lines up after the page is opened again.
+    remember(id, view) {
+      if (!view) return;
+      try { localStorage.setItem("spt-trace-" + id, JSON.stringify(view)); } catch (e) { /* fine */ }
+    },
+    // A job starts: text is exactly what was sent. Serial plotters only.
+    start(id, plotter, name, text, view) {
       this.clear();
-      if (plotter !== "7585b" || !text || typeof arcPoints !== "function") return;
-      job = { id, name: String(name || ""), segs: segments(text) };
+      if (!SERIAL[plotter] || !text || typeof arcPoints !== "function") return;
+      if (!view) try { view = JSON.parse(localStorage.getItem("spt-trace-" + id) || "null"); } catch (e) { view = null; }
+      job = { id, name: String(name || ""), segs: segments(text), view };
       if (!job.segs.count) { job = null; return; }
       est = 0; lastSent = -1; rate = 0; finished = false;
       timer = setInterval(tick, TICK);

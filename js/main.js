@@ -464,6 +464,17 @@ function zoomedText(text) {
   return shiftPairs(applyZoom(text, t.z), t.dx, t.dy);
 }
 
+// For the live plot trace (plottrace.js): how the corrected preview is set up right now.
+// A point of the file sent to the plotter is (x·z + dx) after the offset (ox, oy) was added,
+// so the trace can be moved along with the drawing when Size or the offset change later.
+function plotViewState() {
+  if (!correctedText || !currentFile) return null;
+  const t = zoomTransform(correctedText) || { z: 1, dx: 0, dy: 0 };
+  return { file: currentFile.name, rot: rotationDeg, fh: flipH, fv: flipV,
+           plotter: plotterSelect.value, mode: hpglVersion.value,
+           z: t.z, dx: t.dx, dy: t.dy, ox: manualOffsetX, oy: manualOffsetY };
+}
+
 // How zoomedText moves a point: (x, y) -> (x·z + dx, y·z + dy), give or take rounding.
 // null at 100%. The preview uses it to paint repeated lines found at 100%.
 function zoomTransform(text) {

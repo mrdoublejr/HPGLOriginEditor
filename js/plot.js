@@ -7,13 +7,13 @@
 // there and, if so, offers to optimize it before plotting.
 // While a job plots, it shows how far along it is (the Pi reports every few seconds,
 // see functions/pi/progress.js) and a Stop button. A job that is still running when
-// the page opens is picked up again. On the 7585B the corrected preview also shows,
+// the page opens is picked up again. On the 7585B and 7475A the corrected preview also shows,
 // in red, what the pen has drawn so far (plottrace.js).
 
 (function () {
   // Site plotter -> the name the Pi knows it by.
-  const PI_NAMES = { designjet750: "750c", hp7585b: "7585b" };
-  const LABELS   = { "750c": "750C", "7585b": "7585B" };
+  const PI_NAMES = { designjet750: "750c", hp7585b: "7585b", hp7475a: "7475a" };
+  const LABELS   = { "750c": "750C", "7585b": "7585B", "7475a": "7475A" };
 
   const btn = document.getElementById("btnPlot");
   const cutBtn = document.getElementById("btnCutSheet");
@@ -112,7 +112,7 @@
 
   // The red trace for a job that was already running: fetch what was sent.
   async function traceFrom(job) {
-    if (!window.plotTrace || job.plotter !== "7585b") return;
+    if (!window.plotTrace || job.plotter === "750c") return;
     try {
       const r = await fetch("/admin/api/plot?file=1&id=" + job.id, { cache: "no-store" });
       if (!r.ok) return;
@@ -206,8 +206,8 @@
     });
   }
 
-  // Sends a job to the queue and watches it.
-  async function sendJob(target, name, text) {
+  // Sends a job to the queue and watches it. view: how the preview was set up (for the trace).
+  async function sendJob(target, name, text, view) {
     busy = true; refresh(); say("Sending…");
     try {
       const r = await fetch("/admin/api/plot", {
@@ -217,7 +217,7 @@
       const j = await r.json().catch(() => ({}));
       if (!r.ok) { say("Couldn't queue it: " + (j.error || r.status), "err"); return; }
       say("Queued…");
-      if (window.plotTrace) plotTrace.start(j.id, target, name, text);
+      if (window.plotTrace) { plotTrace.remember(j.id, view); plotTrace.start(j.id, target, name, text, view); }
       await poll(j.id);
     } catch (e) {
       say("Couldn't queue it: " + e.message, "err");
@@ -271,7 +271,7 @@
         if (!o) return;
       }
     } else if (!confirm("Plot " + o.fileName + " on the " + LABELS[target] + "?")) return;
-    await sendJob(target, o.fileName, o.content);
+    await sendJob(target, o.fileName, o.content, typeof plotViewState === "function" ? plotViewState() : null);
   });
 
   sel.addEventListener("change", () => { say(""); refresh(); });
