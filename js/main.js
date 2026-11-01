@@ -6,10 +6,11 @@ const ZOOM_LIMIT = 50;
 
 // Flip state (mirror the corrected drawing). Reset every time a file is loaded.
 let btnFlipH = null, btnFlipV = null;
-let btnRepeats = null, btnOptimize = null, btnSmooth = null, optStatsEl = null;
+let btnRepeats = null, btnOptimize = null, btnSmooth = null, btnThin = null, optStatsEl = null;
 let showRepeats = true;        // orange/red marks on repeated lines (corrected preview)
 let optimizeOn = false;        // Optimize: run optimizeHPGL on the corrected drawing
 let smoothOn = false;          // Smooth curves: runs of short moves -> arcs and circles (HP-GL plotters only)
+let thinOn = false;            // Skip re-inking: leave out moves that only go over ink already down
 let penSpeed = "file";         // Speed: "file" (the file's own VS), "default" (VS;), or cm/s as a string
 let speedSelEl = null, speedGroupEl = null;
 try { penSpeed = localStorage.getItem("spt-pen-speed") || "file"; } catch (e) { /* private window */ }
@@ -18,11 +19,11 @@ let optBase = null;            // the drawing as it was before Optimize / Smooth
 const optResults = new Map();  // recent optimizeHPGL results, so redrawing doesn't run it again
 
 // optimizeHPGL with the cache. Same drawing and same buttons -> same result.
-function runOptimizer(text, optimize, smooth) {
-  const key = (optimize ? "o" : "-") + (smooth ? "s" : "-") + text;
+function runOptimizer(text, optimize, smooth, thin) {
+  const key = (optimize ? "o" : "-") + (smooth ? "s" : "-") + (thin ? "t" : "-") + text;
   if (!optResults.has(key)) {
     if (optResults.size > 4) optResults.delete(optResults.keys().next().value);
-    optResults.set(key, optimizeHPGL(text, { optimize, smooth }));
+    optResults.set(key, optimizeHPGL(text, { optimize, smooth, thin }));
   }
   return optResults.get(key);
 }
@@ -84,6 +85,7 @@ function boot() {
     btnRepeats       = document.getElementById("btnRepeats");
     btnOptimize      = document.getElementById("btnOptimize");
     btnSmooth        = document.getElementById("btnSmooth");
+    btnThin          = document.getElementById("btnThin");
     speedSelEl       = document.getElementById("penSpeed");
     speedGroupEl     = document.getElementById("speedGroup");
     speedSelEl.addEventListener("change", () => {
@@ -253,6 +255,11 @@ function wireEvents() {
     btnSmooth.setAttribute("aria-pressed", smoothOn ? "true" : "false");
     runCorrection();
   });
+  btnThin.addEventListener("click", () => {
+    thinOn = !thinOn;
+    btnThin.setAttribute("aria-pressed", thinOn ? "true" : "false");
+    runCorrection();
+  });
   btnFlipH.addEventListener("click", () => {
     flipH = !flipH;
     updateFlipButtons();
@@ -318,6 +325,8 @@ function loadFile(file) {
     btnOptimize.setAttribute("aria-pressed", "false");
     smoothOn = false;                            // and Smooth curves, so the file is first seen as it is
     btnSmooth.setAttribute("aria-pressed", "false");
+    thinOn = false;                              // and Skip re-inking
+    btnThin.setAttribute("aria-pressed", "false");
 
     renderOriginalPreview();
     runCorrection();
@@ -376,8 +385,8 @@ function runCorrection() {
     lastOptimize = null;
     optBase = correctedBaseText;
     const smoothNow = smoothOn && smoothAllowed();
-    if ((optimizeOn || smoothNow) && typeof optimizeHPGL === "function") {
-      lastOptimize = runOptimizer(correctedBaseText, optimizeOn, smoothNow);
+    if ((optimizeOn || smoothNow || thinOn) && typeof optimizeHPGL === "function") {
+      lastOptimize = runOptimizer(correctedBaseText, optimizeOn, smoothNow, thinOn);
       correctedBaseText = lastOptimize.text;
     }
     renderSpeedPicker();
@@ -1039,7 +1048,7 @@ function renderPenChips() {
 // so the numbers are exactly what Optimize would do. Used by the Plot button (plot.js).
 function pendingOptimize() {
   if (optimizeOn || !optBase || typeof optimizeHPGL !== "function") return null;
-  const r = runOptimizer(optBase, true, smoothOn && smoothAllowed());
+  const r = runOptimizer(optBase, true, smoothOn && smoothAllowed(), thinOn);
   if (!r.ok) return null;
   const lines = r.stats.dupLines + r.stats.overlaps;
   return lines ? { lines, stats: r.stats } : null;
@@ -1065,7 +1074,7 @@ function showOptimizeNote() {
     return;
   }
   if (!o.ok) {
-    optStatsEl.textContent = (optimizeOn ? "not optimized: " : "not smoothed: ") + o.reason;
+    optStatsEl.textContent = (optimizeOn ? "not optimized: " : thinOn && !(smoothOn && smoothAllowed()) ? "not changed: " : "not smoothed: ") + o.reason;
     optStatsEl.title = "The file is used exactly as it is.";
     optStatsEl.classList.add("warn");
     return;
@@ -1074,9 +1083,11 @@ function showOptimizeNote() {
   const fewer = t.before - t.after;
   const travel = t.travelBefore ? Math.round(100 * (1 - t.travelAfter / t.travelBefore)) : 0;
   const curves = t.arcs + t.circles + t.straight + (t.bridged || 0);
+  const skipped = (t.thinSegs || 0) + (t.thinPieces || 0);
   const parts = [];
   if (fewer > 0) parts.push(`${f(fewer)} fewer moves`);
   if (optimizeOn && travel) parts.push(`pen-up travel ${travel > 0 ? "−" : "+"}${Math.abs(travel)}%`);
+  if (thinOn) parts.push(skipped ? `re-inking −${f(Math.round(t.thinLen / 400 / 2.54))} in` : "nothing re-inked");
   if (smoothOn && smoothAllowed()) {
     if (!curves) parts.push("nothing to smooth");
     else {
@@ -1084,7 +1095,6 @@ function showOptimizeNote() {
       if (t.straight) sm.push(`${f(t.straight)} lines straightened`);
       if (t.arcs) sm.push(`${f(t.arcs)} arcs`);
       if (t.circles) sm.push(`${f(t.circles)} circles`);
-      if (t.bridged) sm.push(`${f(t.bridged)} tiny gaps bridged`);
       parts.push(sm.join(", "));
     }
   }
@@ -1099,11 +1109,14 @@ function showOptimizeNote() {
     (t.straight ? `${f(t.straightMoves)} short moves (staircase steps) drawn as ${f(t.straight)} straight lines\n` : "") +
     (t.arcs + t.circles ? `${f(t.arcMoves)} short moves drawn as ${f(t.arcs)} arcs (AA) and ${f(t.circles)} circles (CI)\n` : "") +
     (t.bridged ? `${f(t.bridged)} pen lifts over gaps of 0.1 mm or less: the pen stays down and moves across\n` : "") +
+    (skipped ? `${f(t.thinSegs)} moves left out that only went over ink the same pen already put down ` +
+               `(${(t.thinLen / 400 / 2.54).toFixed(1)} in of pen travel; ${f(t.thinPieces)} whole pieces)\n` : "") +
     (curves ? "Every point within 0.1 mm of where it was.\n" : "") +
+    (skipped ? "Every point left out is within 0.1 mm of ink drawn.\n" : "") +
     `pen-down moves ${f(t.before)} → ${f(t.after)}\n` +
     `pen lifts ${f(t.liftsBefore)} → ${f(t.liftsAfter)}\n` +
     `pen-up travel ${f(Math.round(t.travelBefore / 400))} → ${f(Math.round(t.travelAfter / 400))} in\n` +
-    (curves ? `Checked: every arc, circle and label of the original still in place.`
+    (curves || skipped ? `Checked: every arc, circle and label of the original still in place.`
             : `Checked: draws exactly the same lines as the original.`);
 }
 

@@ -57,6 +57,8 @@
       "Tidies the drawing so the plotter doesn't draw the same line twice (or go back over part of one) or wander around the paper. The picture stays exactly the same; it just plots quicker. The note beside it says what was saved."],
     ["#btnSmooth", "Smooth curves",
       "Many files draw every curve as dozens of tiny straight moves, and every slanted line as a staircase of tiny steps. This draws the staircases as single straight lines and the curves as real curves the plotter knows (arcs and circles): far fewer moves, and every point stays within 0.1 mm. Where one piece ends less than 0.1 mm from where the next starts, the pen stays down and moves across instead of lifting and dropping again, so it doesn't sit and pound on tiny pieces. Only for plotters that take HP-GL."],
+    ["#btnThin", "Skip re-inking",
+      "Some drawings make every line out of an outline: two edges a hair apart, joined by zig-zags. Drawn small, the pen goes over the same narrow band again and again and soaks it solid. This leaves out every move that only goes over ink the same pen has already put down (each point within 0.1 mm of it), so each spot gets inked about once. A line drawn by a different pen on top since doesn't count, so colours stay in the same order. It changes the drawing very slightly: at most a line edge up to 0.1 mm thinner."],
     ["#penSpeed, #speedGroup", "Speed",
       "How fast the pen moves while it draws. Some files set a slow speed of their own (Enterprise asks for 5 cm/s). Pick the pen's default speed or one of your own to plot faster; slower speeds give some pens a darker, cleaner line. Shown only for plotters whose speed range we know from their manual."],
     ["#btnAllPen1", "All black",

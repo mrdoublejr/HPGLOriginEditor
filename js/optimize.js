@@ -22,6 +22,14 @@
 // pen just moves on instead of lifting and dropping again. Some files draw outlines as
 // hundreds of short pieces with hair-width gaps, and the plotter sits there pounding.
 //
+// "Skip re-inking": leaves out moves that only go over ink the same pen has already put
+// down (every point of the move within OPT_THIN of it, 0.1 mm). Some files draw every
+// line as an outline (two edges a hair apart, joined by zig-zags), so the pen goes over
+// the same narrow band again and again and soaks it solid. A covered stretch in the
+// middle of a piece is only left out when it's at least OPT_MIN_TRIM long (a shorter one
+// isn't worth an extra pen lift). Ink of another pen drawn on top since counts as not
+// covered, so colours still end up on top in the same order.
+//
 // Lines (PU, PD, PA, PR) are read into absolute, whole plotter units (relative
 // moves added up, decimals rounded). Every other command stays where it was and
 // pieces never move across it, so colours still go down in the same order. Commands
@@ -53,6 +61,8 @@ const OPT_ARC_STEP = 30;                       // largest turn (degrees) between
 const OPT_LINE_MAX = 400;                      // most moves looked at for one straightened line
 const OPT_LINE_TURN = 100;                     // most the path may turn in total (degrees) within one straightened line
 const OPT_GAP = 4;                             // Smooth curves: pen stays down across a gap up to this (4 = 0.1 mm)
+const OPT_THIN = 4;                            // Skip re-inking: how close to ink already down counts as on it (4 = 0.1 mm)
+const OPT_THIN_CELL = 16;                      // grid cell for finding ink nearby (plotter units)
 
 // Commands that only change settings: kept in place, nothing to do with where the pen is.
 const OPT_SETTINGS = new Set(["IN", "DF", "SP", "LT", "VS", "PW", "WU", "PG", "NP", "PS", "RO",
@@ -207,17 +217,31 @@ function optimizeHPGL(text, opts) {
   opts = opts || {};
   const tidy = opts.optimize !== false;          // the Optimize button
   const smooth = !!opts.smooth;                  // the Smooth curves button
-  if (tidy && smooth) {
-    // Both: Optimize first (with its exact ink check), then smooth what it made.
-    const a = optimizeHPGL(text, { optimize: true });
-    if (!a.ok) return a;
-    const b = optimizeHPGL(a.text, { optimize: false, smooth: true });
-    if (!b.ok) return a;
-    const s = Object.assign({}, a.stats);
-    s.after = b.stats.after; s.arcs = b.stats.arcs; s.circles = b.stats.circles; s.arcMoves = b.stats.arcMoves;
-    s.straight = b.stats.straight; s.straightMoves = b.stats.straightMoves;
-    s.liftsAfter = b.stats.liftsAfter; s.travelAfter = b.stats.travelAfter; s.bridged = b.stats.bridged;
-    return { text: b.text, ok: true, stats: s };
+  const thin = !!opts.thin;                      // the Skip re-inking button
+  if (tidy + smooth + thin > 1) {
+    // More than one: one after the other. Skip re-inking first (in the file's own order,
+    // so the first time a spot is inked is the one kept), then Optimize (with its exact
+    // ink check), which also puts what's left in the shortest order, then Smooth curves.
+    // If a later step can't run, what the earlier ones made is kept.
+    const steps = [];
+    if (thin) steps.push({ optimize: false, thin: true });
+    if (tidy) steps.push({ optimize: true });
+    if (smooth) steps.push({ optimize: false, smooth: true });
+    let cur = null, s = null;
+    for (const st of steps) {
+      const r = optimizeHPGL(cur ? cur.text : text, st);
+      if (!r.ok) { if (!cur) return r; break; }
+      if (!s) s = Object.assign({}, r.stats);
+      else {
+        s.after = r.stats.after; s.liftsAfter = r.stats.liftsAfter; s.travelAfter = r.stats.travelAfter;
+        const keys = st.thin ? ["thinSegs", "thinPieces", "thinLen"]
+                   : st.smooth ? ["arcs", "circles", "arcMoves", "straight", "straightMoves", "bridged"]
+                   : ["dupLines", "overlaps", "overlapLen", "dots", "nodes", "spDropped"];
+        for (const k of keys) s[k] = r.stats[k];
+      }
+      cur = r;
+    }
+    return { text: cur.text, ok: true, stats: s };
   }
   const original = text;
   // Device-control escapes at the very start (ESC.( and the like) are kept as they are.
@@ -234,7 +258,8 @@ function optimizeHPGL(text, opts) {
   const blocks = [];                             // { items: [[ax,ay,bx,by]...], style } | { cmd }
   let cur = null;
   const stats = { dupLines: 0, overlaps: 0, overlapLen: 0, dots: 0, nodes: 0, before: 0, after: 0,
-                  spDropped: 0, arcs: 0, circles: 0, arcMoves: 0, straight: 0, straightMoves: 0, bridged: 0 };
+                  spDropped: 0, arcs: 0, circles: 0, arcMoves: 0, straight: 0, straightMoves: 0, bridged: 0,
+                  thinSegs: 0, thinPieces: 0, thinLen: 0 };
   for (const it of read.items) {
     if (it.seg) {
       if (!cur || cur.style !== it.style) { cur = { items: [], style: it.style }; blocks.push(cur); }
@@ -254,6 +279,7 @@ function optimizeHPGL(text, opts) {
   // up on top in the same order.
   const inkLines = new Map();
   const seenExact = new Map();                  // style -> Set of lines drawn (exact ends)
+  const thinInk = thin ? optThinInk() : null;    // Skip re-inking: ink laid down so far, every pen
 
   for (const b of blocks) {
     if (b.cmd) {
@@ -354,7 +380,8 @@ function optimizeHPGL(text, opts) {
       // 4. order: always go to the nearest unplotted piece next (either end).
       paths = optOrder(paths, px, py);
     } else {
-      paths = optJoin(before);                   // Smooth curves only: same pieces, same order
+      paths = optJoin(before);                   // Smooth curves / Skip re-inking: same pieces, same order
+      if (thin) paths = optThin(paths, b.style, thinInk, stats);
     }
     if (smooth) paths = optBridge(paths, stats);
 
@@ -410,7 +437,7 @@ function optimizeHPGL(text, opts) {
     else if (!(smooth && /^(AA|CI)/.test(s))) return { text: original, ok: false, reason: "check failed" };
   }                                                // (arcs and circles made by smoothing are extra)
   if (k !== a0.length) return { text: original, ok: false, reason: "check failed" };
-  if (!smooth || !(stats.arcs + stats.circles + stats.straight + stats.bridged)) {
+  if (!(smooth || thin) || !(stats.arcs + stats.circles + stats.straight + stats.bridged + stats.thinSegs + stats.thinPieces)) {
     const ia = optInk(read), ib = optInk(t1);
     if (ia.size !== ib.size) return { text: original, ok: false, reason: "check failed" };
     for (const [st, ink] of ia) {
@@ -432,6 +459,103 @@ function optJoin(segs) {
     paths.push([ax, ay, bx, by]);
   }
   return paths;
+}
+
+// ── Skip re-inking ──────────────────────────────────────────────────
+// Ink laid down so far: segments in a grid (each segment listed in every cell within
+// OPT_THIN of it), and for each cell the last time each pen drew near it, so ink that
+// another pen has drawn over since doesn't count.
+function optThinInk() { return { cells: new Map(), stamp: new Map(), seq: 0 }; }
+
+function optThinCellsOf(ax, ay, bx, by) {
+  const C = OPT_THIN_CELL, keys = new Set();
+  const len = Math.hypot(bx - ax, by - ay), n = Math.max(1, Math.ceil(len / (C / 2)));
+  for (let k = 0; k <= n; k++) {
+    const x = ax + (bx - ax) * k / n, y = ay + (by - ay) * k / n;
+    const i0 = Math.floor((x - OPT_THIN) / C), i1 = Math.floor((x + OPT_THIN) / C);
+    const j0 = Math.floor((y - OPT_THIN) / C), j1 = Math.floor((y + OPT_THIN) / C);
+    for (let i = i0; i <= i1; i++) for (let j = j0; j <= j1; j++) keys.add((i + 100000) * 200003 + (j + 100000));
+  }
+  return keys;
+}
+
+function optThinAdd(ink, style, ax, ay, bx, by) {
+  const seg = { ax, ay, bx, by, style, seq: ++ink.seq };
+  for (const k of optThinCellsOf(ax, ay, bx, by)) {
+    let list = ink.cells.get(k);
+    if (!list) { list = []; ink.cells.set(k, list); }
+    list.push(seg);
+    let st = ink.stamp.get(k);
+    if (!st) { st = new Map(); ink.stamp.set(k, st); }
+    st.set(style, seg.seq);
+  }
+}
+
+// Is every point of this move within OPT_THIN of ink this pen already put down (and
+// no other pen has drawn there since)?
+function optThinCovered(ink, style, ax, ay, bx, by) {
+  const C = OPT_THIN_CELL, D2 = OPT_THIN * OPT_THIN;
+  const len = Math.hypot(bx - ax, by - ay), n = Math.max(1, Math.ceil(len / 2));
+  for (let k = 0; k <= n; k++) {
+    const x = ax + (bx - ax) * k / n, y = ay + (by - ay) * k / n;
+    const key = (Math.floor(x / C) + 100000) * 200003 + (Math.floor(y / C) + 100000);
+    const list = ink.cells.get(key);
+    if (!list) return false;
+    let other = 0;
+    for (const [st, q] of ink.stamp.get(key)) if (st !== style && q > other) other = q;
+    let ok = false;
+    for (const s of list) {
+      if (s.style !== style || s.seq <= other) continue;
+      const dx = s.bx - s.ax, dy = s.by - s.ay, L = dx * dx + dy * dy;
+      let t = L ? ((x - s.ax) * dx + (y - s.ay) * dy) / L : 0;
+      t = t < 0 ? 0 : t > 1 ? 1 : t;
+      const ex = s.ax + t * dx - x, ey = s.ay + t * dy - y;
+      if (ex * ex + ey * ey <= D2) { ok = true; break; }
+    }
+    if (!ok) return false;
+  }
+  return true;
+}
+
+// Leaves out the moves of each path that only go over ink already down: at the start
+// or end of a path always, in the middle when the covered stretch is OPT_MIN_TRIM or
+// longer (the path is split there). A path that is all on ink is left out.
+function optThin(paths, style, ink, stats) {
+  const out = [];
+  for (const p of paths) {
+    if (p.length === 4 && p[0] === p[2] && p[1] === p[3]) {          // a dot
+      if (optThinCovered(ink, style, p[0], p[1], p[0], p[1])) { stats.thinPieces++; continue; }
+      optThinAdd(ink, style, p[0], p[1], p[0], p[1]);
+      out.push(p);
+      continue;
+    }
+    const n = p.length / 2 - 1, cov = new Array(n), len = new Array(n);
+    for (let k = 0; k < n; k++) {
+      const ax = p[2 * k], ay = p[2 * k + 1], bx = p[2 * k + 2], by = p[2 * k + 3];
+      len[k] = Math.hypot(bx - ax, by - ay);
+      cov[k] = optThinCovered(ink, style, ax, ay, bx, by);
+      if (!cov[k]) optThinAdd(ink, style, ax, ay, bx, by);
+    }
+    // which moves stay: uncovered ones, and short covered stretches between them
+    const keep = cov.map((c) => !c);
+    let first = keep.indexOf(true);
+    if (first < 0) { stats.thinPieces++; stats.thinSegs += n; for (const l of len) stats.thinLen += l; continue; }
+    let last = keep.lastIndexOf(true);
+    for (let k = first; k <= last; ) {
+      if (keep[k]) { k++; continue; }
+      let e = k, run = 0;
+      while (!keep[e]) { run += len[e]; e++; }
+      if (run < OPT_MIN_TRIM) for (let m = k; m < e; m++) keep[m] = true;
+      k = e;
+    }
+    let piece = null;
+    for (let k = 0; k < n; k++) {
+      if (!keep[k]) { stats.thinSegs++; stats.thinLen += len[k]; piece = null; continue; }
+      if (!piece) { piece = [p[2 * k], p[2 * k + 1]]; out.push(piece); }
+      piece.push(p[2 * k + 2], p[2 * k + 3]);
+    }
+  }
+  return out;
 }
 
 // Smooth curves: joins a path onto the one before it when it starts (or, turned round,
