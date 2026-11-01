@@ -17,6 +17,10 @@
 // a straight line (a "staircase" of 1-unit steps, within the same tolerance) becomes
 // one straight move. Files exported from drawing programs often draw every curve as
 // dozens of tiny straight moves, and every slanted line as a staircase.
+// It also keeps the pen down across tiny gaps: when the next piece starts within
+// OPT_GAP of where the last one ended (0.1 mm, less than the width of any pen line), the
+// pen just moves on instead of lifting and dropping again. Some files draw outlines as
+// hundreds of short pieces with hair-width gaps, and the plotter sits there pounding.
 //
 // Lines (PU, PD, PA, PR) are read into absolute, whole plotter units (relative
 // moves added up, decimals rounded). Every other command stays where it was and
@@ -48,6 +52,7 @@ const OPT_ARC_MIN = 3;
 const OPT_ARC_STEP = 30;                       // largest turn (degrees) between two points of one arc
 const OPT_LINE_MAX = 400;                      // most moves looked at for one straightened line
 const OPT_LINE_TURN = 100;                     // most the path may turn in total (degrees) within one straightened line
+const OPT_GAP = 4;                             // Smooth curves: pen stays down across a gap up to this (4 = 0.1 mm)
 
 // Commands that only change settings: kept in place, nothing to do with where the pen is.
 const OPT_SETTINGS = new Set(["IN", "DF", "SP", "LT", "VS", "PW", "WU", "PG", "NP", "PS", "RO",
@@ -211,7 +216,7 @@ function optimizeHPGL(text, opts) {
     const s = Object.assign({}, a.stats);
     s.after = b.stats.after; s.arcs = b.stats.arcs; s.circles = b.stats.circles; s.arcMoves = b.stats.arcMoves;
     s.straight = b.stats.straight; s.straightMoves = b.stats.straightMoves;
-    s.liftsAfter = b.stats.liftsAfter; s.travelAfter = b.stats.travelAfter;
+    s.liftsAfter = b.stats.liftsAfter; s.travelAfter = b.stats.travelAfter; s.bridged = b.stats.bridged;
     return { text: b.text, ok: true, stats: s };
   }
   const original = text;
@@ -229,7 +234,7 @@ function optimizeHPGL(text, opts) {
   const blocks = [];                             // { items: [[ax,ay,bx,by]...], style } | { cmd }
   let cur = null;
   const stats = { dupLines: 0, overlaps: 0, overlapLen: 0, dots: 0, nodes: 0, before: 0, after: 0,
-                  spDropped: 0, arcs: 0, circles: 0, arcMoves: 0, straight: 0, straightMoves: 0 };
+                  spDropped: 0, arcs: 0, circles: 0, arcMoves: 0, straight: 0, straightMoves: 0, bridged: 0 };
   for (const it of read.items) {
     if (it.seg) {
       if (!cur || cur.style !== it.style) { cur = { items: [], style: it.style }; blocks.push(cur); }
@@ -351,6 +356,7 @@ function optimizeHPGL(text, opts) {
     } else {
       paths = optJoin(before);                   // Smooth curves only: same pieces, same order
     }
+    if (smooth) paths = optBridge(paths, stats);
 
     // 5. write it out: PU to the start (unless already there), PD through it,
     //    with arcs and circles in place of runs of short moves when smoothing.
@@ -404,7 +410,7 @@ function optimizeHPGL(text, opts) {
     else if (!(smooth && /^(AA|CI)/.test(s))) return { text: original, ok: false, reason: "check failed" };
   }                                                // (arcs and circles made by smoothing are extra)
   if (k !== a0.length) return { text: original, ok: false, reason: "check failed" };
-  if (!smooth || !(stats.arcs + stats.circles + stats.straight)) {
+  if (!smooth || !(stats.arcs + stats.circles + stats.straight + stats.bridged)) {
     const ia = optInk(read), ib = optInk(t1);
     if (ia.size !== ib.size) return { text: original, ok: false, reason: "check failed" };
     for (const [st, ink] of ia) {
@@ -426,6 +432,33 @@ function optJoin(segs) {
     paths.push([ax, ay, bx, by]);
   }
   return paths;
+}
+
+// Smooth curves: joins a path onto the one before it when it starts (or, turned round,
+// ends) within OPT_GAP of where that one ended, so the pen moves across the gap
+// instead of lifting and dropping. A dot on its own counts as a path too.
+function optBridge(paths, stats) {
+  const out = [];
+  for (let p of paths) {
+    const q = out[out.length - 1];
+    if (q) {
+      const ex = q[q.length - 2], ey = q[q.length - 1], n = p.length;
+      const d0 = Math.hypot(p[0] - ex, p[1] - ey), d1 = Math.hypot(p[n - 2] - ex, p[n - 1] - ey);
+      if (Math.min(d0, d1) <= OPT_GAP) {
+        if (d1 < d0) { const r = []; for (let j = n - 2; j >= 0; j -= 2) r.push(p[j], p[j + 1]); p = r; }
+        let j = 0;
+        if (p[0] === ex && p[1] === ey) j = 2;          // starts right where the last ended: no extra move
+        for (; j < p.length; j += 2) {
+          if (p[j] === q[q.length - 2] && p[j + 1] === q[q.length - 1]) continue;   // a dot, or a repeated point
+          q.push(p[j], p[j + 1]);
+        }
+        stats.bridged++;
+        continue;
+      }
+    }
+    out.push(p.slice());
+  }
+  return out;
 }
 
 // Puts paths in the order that always goes to the nearest unplotted piece next

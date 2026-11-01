@@ -1073,7 +1073,7 @@ function showOptimizeNote() {
   const t = o.stats, f = (v) => v.toLocaleString();
   const fewer = t.before - t.after;
   const travel = t.travelBefore ? Math.round(100 * (1 - t.travelAfter / t.travelBefore)) : 0;
-  const curves = t.arcs + t.circles + t.straight;
+  const curves = t.arcs + t.circles + t.straight + (t.bridged || 0);
   const parts = [];
   if (fewer > 0) parts.push(`${f(fewer)} fewer moves`);
   if (optimizeOn && travel) parts.push(`pen-up travel ${travel > 0 ? "−" : "+"}${Math.abs(travel)}%`);
@@ -1084,6 +1084,7 @@ function showOptimizeNote() {
       if (t.straight) sm.push(`${f(t.straight)} lines straightened`);
       if (t.arcs) sm.push(`${f(t.arcs)} arcs`);
       if (t.circles) sm.push(`${f(t.circles)} circles`);
+      if (t.bridged) sm.push(`${f(t.bridged)} tiny gaps bridged`);
       parts.push(sm.join(", "));
     }
   }
@@ -1097,6 +1098,7 @@ function showOptimizeNote() {
       : "") +
     (t.straight ? `${f(t.straightMoves)} short moves (staircase steps) drawn as ${f(t.straight)} straight lines\n` : "") +
     (t.arcs + t.circles ? `${f(t.arcMoves)} short moves drawn as ${f(t.arcs)} arcs (AA) and ${f(t.circles)} circles (CI)\n` : "") +
+    (t.bridged ? `${f(t.bridged)} pen lifts over gaps of 0.1 mm or less: the pen stays down and moves across\n` : "") +
     (curves ? "Every point within 0.1 mm of where it was.\n" : "") +
     `pen-down moves ${f(t.before)} → ${f(t.after)}\n` +
     `pen lifts ${f(t.liftsBefore)} → ${f(t.liftsAfter)}\n` +
